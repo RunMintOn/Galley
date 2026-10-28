@@ -38,7 +38,8 @@ function renderProjects() {
     const dot = document.createElement("span"); dot.className = "dot" + (related.some(s => s.state === "working") ? " working" : ""); dot.textContent = "●";
     const label = document.createElement("span"); label.className = "project-name"; label.textContent = p.name;
     const path = document.createElement("small"); path.textContent = p.root; label.append(path);
-    const count = document.createElement("span"); count.textContent = selected?.rounds.at(-1)?.count ?? "—";
+    const count = document.createElement("span");
+    count.textContent = (selected?.rounds.find(r => selected.id === state.session && r.id === state.round) || selected?.rounds.at(-1))?.count ?? "—";
     b.append(dot, label, count); return b;
   }));
 }
@@ -65,6 +66,32 @@ async function chooseProject(root) {
   state.root = root; state.session = ""; state.round = ""; state.data = null; state.mode = "turn";
   await refresh();
 }
+export function savePosition() {
+  if (state.data) positions.set(state.data.sessionId + ":" + state.data.id, $("document").parentElement.scrollTop);
+}
+export async function focusSession(hash) {
+  const target = new URLSearchParams(hash.slice(1));
+  state.session = target.get("session") || state.session;
+  state.root = state.sessions.find(s => s.id === state.session)?.root || target.get("root") || state.root;
+  state.round = ""; await refresh();
+}
+$("add-project").onclick = run(async () => {
+  const root = prompt("本地项目的完整目录路径");
+  if (!root) return;
+  await api("projects", { root }); await refresh();
+  const project = state.projects.find(p => p.root === root || p.root.endsWith(root));
+  if (project) await chooseProject(project.root);
+});
+$("remove-project").onclick = run(async () => {
+  if (!state.root || !confirm("从审查台移除此项目？不会删除磁盘文件。")) return;
+  await api("projects", { root: state.root }, "DELETE"); await refresh();
+});
+$("move-project").onclick = run(async () => {
+  const roots = state.projects.map(p => p.root); const at = roots.indexOf(state.root);
+  if (at <= 0) return;
+  [roots[at - 1], roots[at]] = [roots[at], roots[at - 1]];
+  await api("projects/order", { roots }); await refresh();
+});
 async function loadRound() {
   const current = ++generation;
   const scrollKey = state.data ? state.data.sessionId + ":" + state.data.id : "";

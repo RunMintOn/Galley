@@ -22,6 +22,11 @@ function scope(css, name) {
       return name+" "+s;
     });
   });
+  if (name === ".diff-surface") root.walkAtRules("media", rule => {
+    if (!rule.params.includes("prefers-color-scheme: light")) return;
+    rule.walkRules(child => { child.selectors = child.selectors.map(s => "html:not(.dark) " + s); });
+    rule.replaceWith(...rule.nodes);
+  });
   return root.toString();
 }
 const styles = math.outputFiles[0].text + "\n" +
@@ -30,3 +35,4 @@ const styles = math.outputFiles[0].text + "\n" +
   await readFile("web-src/style.css","utf8");
 await writeFile("dist/web/style.css",styles);
 await writeFile("dist/web/index.html",await readFile("web-src/index.html"));
+await writeFile("dist/web/bootstrap.js",await readFile("web-src/bootstrap.js"));

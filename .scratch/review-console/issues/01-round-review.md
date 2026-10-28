@@ -4,9 +4,14 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-+- [ ] 真实 pi 加载器验证 Edit/Write/apply_patch 捕获和最终稳定结束的关联；保留现有捕获边界。
-- [ ] 共享本地服务有 Host、Origin、认证守卫，报告持久化、回复按引用读取。
-- [ ] 浏览器同屏展示本轮与回复，unified/split、词级差异和图表使用迁入实现。
-- [ ] 已有 compact 捕获仍启用时拒绝启动新捕获，旧插件与用户配置不变。
+- [x] 真实 pi 加载器验证 Edit/Write/apply_patch 捕获和最终稳定结束的关联；保留现有捕获边界。
+- [x] 共享本地服务有 Host、Origin、认证守卫，报告持久化、回复按引用读取。
+- [x] 浏览器同屏展示本轮与回复，unified/split、词级差异和图表使用迁入实现。
+- [x] 已有 compact 捕获仍启用时拒绝启动新捕获，旧插件与用户配置不变。
+
+
+## Comments
+
+服务测试、真实 pi 扩展加载器及隔离 Chrome 的配对与图表渲染检查通过。未改旧插件及用户配置。

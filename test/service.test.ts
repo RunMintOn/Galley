@@ -38,3 +38,25 @@ test("a completed round keeps its report and original reply paired after reconne
     assert.equal((await fetch(f.service.origin + "/api/projects", { headers: { Authorization: "Bearer test-secret", Origin: "https://evil.test" } })).status, 403);
   } finally { await f.service.close(); }
 });
+
+test("project order survives and two sessions retain distinct rounds", async () => {
+  const f = await fixture();
+  try {
+    const other = join(f.directory, "other"); await mkdir(other);
+    await f.api("/api/register", { cwd: f.root, sessionId: "one" });
+    await f.api("/api/register", { cwd: f.root, sessionId: "two" });
+    await f.api("/api/projects", { root: other });
+    for (const sessionId of ["one", "two"]) for (const id of ["first", "second"]) {
+      await f.api("/api/round", { sessionId, id, outcome: "completed", notice: sessionId + ":" + id, end: id === "first" ? 1 : 2 });
+    }
+    const list = (await f.api("/api/projects")).body;
+    assert.equal(list.sessions.length, 2);
+    const order = list.projects.map((p: { root: string }) => p.root).reverse();
+    assert.equal((await f.api("/api/projects/order", { roots: order })).status, 200);
+    assert.deepEqual((await f.api("/api/projects")).body.projects.map((p: { root: string }) => p.root), order);
+    assert.equal((await f.api("/api/round?session=one&id=first")).body.notice, "one:first");
+    assert.equal((await f.api("/api/round?session=two&id=first")).body.notice, "two:first");
+    assert.equal((await f.api("/api/projects", { root: order[1] }, "DELETE")).status, 200);
+    assert.equal((await f.api("/api/round?session=one&id=first")).status, 404);
+  } finally { await f.service.close(); }
+});

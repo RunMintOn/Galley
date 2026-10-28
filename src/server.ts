@@ -107,6 +107,19 @@ export async function startConsole(options: { directory: string; port?: number; 
           const body = await jsonBody(request);
           await store.addProject(body.root); notify("state"); json(response, {}); return;
         }
+        if (url.pathname === "/api/projects" && request.method === "DELETE") {
+          const body = await jsonBody(request);
+          store.projects = store.projects.filter(p => p.root !== body.root);
+          await store.persist(); notify("state"); json(response, {}); return;
+        }
+        if (url.pathname === "/api/projects/order" && request.method === "POST") {
+          const body = await jsonBody(request);
+          if (!Array.isArray(body.roots) || body.roots.length !== store.projects.length ||
+            new Set(body.roots).size !== store.projects.length ||
+            body.roots.some((root: string) => !store.projects.some(p => p.root === root))) throw new ConsoleError("项目顺序无效");
+          store.projects = body.roots.map((root: string) => store.projects.find(p => p.root === root)!);
+          await store.persist(); notify("state"); json(response, {}); return;
+        }
         if (url.pathname === "/api/register" && request.method === "POST") {
           await connect(await jsonBody(request)); notify("state"); json(response, {}); return;
         }
@@ -151,6 +164,7 @@ export async function startConsole(options: { directory: string; port?: number; 
       const assets: Record<string, [string, string]> = {
         "/": ["index.html", "text/html; charset=utf-8"],
         "/app.js": ["app.js", "text/javascript"],
+        "/bootstrap.js": ["bootstrap.js", "text/javascript"],
         "/style.css": ["style.css", "text/css"],
       };
       const asset = assets[url.pathname];
