@@ -90,7 +90,8 @@ export async function startConsole(options: { directory: string; port?: number; 
     response.setHeader("Cache-Control", "no-store");
     response.setHeader("X-Content-Type-Options", "nosniff");
     response.setHeader("Referrer-Policy", "no-referrer");
-    response.setHeader("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'none'");
+    // function-plot compiles the validated expression grammar; inline scripts remain blocked.
+    response.setHeader("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'none'");
     if (!hasServiceHost(request, port) || isCrossOrigin(request, origin)) { json(response, { error: "Forbidden" }, 403); return; }
     try {
       const url = new URL(request.url || "/", origin);

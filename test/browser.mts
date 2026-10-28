@@ -42,4 +42,8 @@ try {
   await page.screenshot({ path: "test-results/review.png", fullPage: true });
   assert.deepEqual(errors, []);
   console.log(JSON.stringify({ passed: ["same round diff/reply", "math", "Mermaid", "function plot"], directory }));
+} catch (error) {
+  console.error({ errors, document: await page.locator("#document").textContent() });
+  await page.screenshot({ path: "test-results/failure.png", fullPage: true });
+  throw error;
 } finally { await browser.close(); await service.close(); }
