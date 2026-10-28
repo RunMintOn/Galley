@@ -4,10 +4,23 @@
   "private": true,
   "type": "module",
   "description": "Local multi-project review console for pi",
-  "keywords": ["pi-package"],
-  "engines": {"node": ">=22.19"},
-  "pi": {"extensions": ["./dist/extension.mjs"]},
-  "files": ["dist", "README.md", "LICENSE", "migration"],
+  "keywords": [
+    "pi-package"
+  ],
+  "engines": {
+    "node": ">=22.19"
+  },
+  "pi": {
+    "extensions": [
+      "./dist/extension.mjs"
+    ]
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "migration"
+  ],
   "scripts": {
     "build": "node scripts/build.mjs",
     "typecheck": "tsc --noEmit",
@@ -17,7 +30,9 @@
     "start": "node dist/server.mjs",
     "prepack": "npm run build"
   },
-  "peerDependencies": {"@earendil-works/pi-coding-agent": "*"},
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  },
   "devDependencies": {
     "@codemirror/commands": "^6.10.0",
     "@codemirror/lang-javascript": "^6.2.4",
@@ -25,6 +40,7 @@
     "@codemirror/language": "^6.11.0",
     "@codemirror/state": "^6.5.0",
     "@codemirror/view": "^6.38.0",
+    "@earendil-works/pi-coding-agent": "^1.4.0",
     "@lezer/highlight": "^1.2.1",
     "@mdit/plugin-katex": "1.1.4",
     "@types/diff": "^8.0.0",

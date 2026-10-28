@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="zh-CN" class="dark">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Review Console</title><link rel="stylesheet" href="/style.css"></head>
+<body>
+<div id="notice" role="status" aria-live="polite"></div>
+<main id="console">
+  <section class="pane projects-pane" id="projects-pane">
+    <header><strong>项目 <span id="project-count"></span></strong><button data-collapse="projects-pane" aria-label="折叠项目">‹</button></header>
+    <div class="pane-body"><nav id="projects"></nav><button id="add-project">＋ 添加目录</button><button id="remove-project">移除当前项目</button></div>
+  </section>
+  <section class="pane files-pane" id="files-pane">
+    <header><strong>文件 <span id="file-count"></span></strong><button data-collapse="files-pane" aria-label="折叠文件">‹</button></header>
+    <div class="pane-body"><div id="changed"></div><h3>FILES</h3><div id="tree"></div></div>
+  </section>
+  <section class="pane content-pane" id="content-pane">
+    <header><nav><button id="turn-tab" aria-pressed="true">本轮</button><button id="history-tab">历史</button></nav><button id="theme" aria-label="切换深浅主题">◐</button><button data-collapse="content-pane" aria-label="折叠内容">‹</button></header>
+    <div class="pane-body" id="content"><p class="empty">请选择项目和轮次</p></div>
+  </section>
+  <section class="pane reply-pane dark" id="reply-pane">
+    <header><strong>回复</strong><button data-collapse="reply-pane" aria-label="折叠回复">›</button></header>
+    <div class="session-navigation"><select id="sessions" aria-label="会话"></select><span id="session-state"></span></div>
+    <div class="reply-navigation"><button id="previous" aria-label="上一轮">‹</button><select id="rounds" aria-label="轮次"></select><button id="next" aria-label="下一轮">›</button><button id="latest">最新</button><button id="show-source" aria-expanded="false">源码</button></div>
+    <textarea id="reply-source" aria-label="回复源码（临时预览）" hidden spellcheck="false"></textarea>
+    <div class="canvas"><article class="sheet" id="document"></article></div>
+    <div id="message-panel"><button id="toggle-input">发送消息</button><div id="input-area" hidden><textarea id="message-input" aria-label="发送到当前活会话" placeholder="Enter 发送 · Shift+Enter 换行"></textarea><button id="send">发送</button><span id="send-state"></span></div></div>
+  </section>
+</main>
+<script type="module" src="/app.js"></script>
+</body>
+</html>

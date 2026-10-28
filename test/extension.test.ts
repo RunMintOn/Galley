@@ -1,0 +1,62 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { resolve, join, dirname } from "node:path";
+import { pathToFileURL, fileURLToPath } from "node:url";
+import { startConsole } from "../src/server.ts";
+
+test("the real pi loader captures edit/write/patch before mutation and publishes one settled round", async t => {
+  const directory = await mkdtemp(join(tmpdir(), "review-loader-"));
+  const root = join(directory, "project");
+  await mkdir(root);
+  const service = await startConsole({ directory, port: 0, token: "loader-secret" });
+  t.after(() => service.close());
+  await writeFile(join(directory, "service.json"), JSON.stringify({ ...service, pid: process.pid }));
+  const oldState = process.env.REVIEW_CONSOLE_STATE;
+  process.env.REVIEW_CONSOLE_STATE = directory;
+  const piRoot = dirname(fileURLToPath(import.meta.resolve("@earendil-works/pi-coding-agent")));
+  const { loadExtensions } = await import(pathToFileURL(join(piRoot, "core/extensions/loader.js")).href);
+  const { SessionManager } = await import("@earendil-works/pi-coding-agent");
+  const loaded = await loadExtensions([resolve("src/extension.ts")], root);
+  assert.deepEqual(loaded.errors, []);
+  const extension = loaded.extensions[0];
+  const manager = SessionManager.create(root, join(directory, "sessions"));
+  loaded.runtime.appendEntry = (type: string, data: unknown) => manager.appendCustomEntry(type, data);
+  const notifications: string[] = [];
+  const ctx = { cwd: root, mode: "tui", hasUI: true, sessionManager: manager, isIdle: () => true, ui: { notify: (text: string) => notifications.push(text) } };
+  const emit = async (type: string, event: object = {}) => { for (const handler of extension.handlers.get(type) || []) await handler(event, ctx); };
+  try {
+    const user = { role: "user", content: "修改文件", timestamp: Date.now() } as const;
+    manager.appendMessage(user);
+    await emit("session_start");
+    await writeFile(join(root, "a.md"), "before\n");
+    await emit("message_end", { message: user });
+    await emit("agent_start");
+    await emit("tool_execution_start", { toolName: "edit", args: { path: "a.md" } });
+    await writeFile(join(root, "a.md"), "after\n");
+    await emit("tool_execution_start", { toolName: "write", args: { path: "b.md" } });
+    await writeFile(join(root, "b.md"), "new\n");
+    await emit("tool_execution_start", { toolName: "apply_patch", args: { patch: "*** Begin Patch\n*** Add File: c.md\n+patch\n*** End Patch\n" } });
+    await writeFile(join(root, "c.md"), "patch\n");
+    const answer = { role: "assistant", stopReason: "stop", content: [{ type: "text", text: "# 本轮完成" }] };
+    const entryId = manager.appendMessage(answer as never);
+    await emit("turn_end", { message: answer, messageEntryId: entryId });
+    await emit("agent_before_settle", { outcome: "completed" });
+    await emit("agent_settled", { aborted: false });
+    const headers = { Authorization: "Bearer loader-secret" };
+    const projects = await (await fetch(service.origin + "/api/projects", { headers })).json();
+    const session = projects.sessions[0];
+    assert.equal(session.rounds.length, 1);
+    const round = await (await fetch(`${service.origin}/api/round?session=${session.id}&id=${session.rounds[0].id}`, { headers })).json();
+    assert.equal(round.reply, "# 本轮完成");
+    assert.deepEqual(round.report.files.map((f: { path: string }) => f.path), ["a.md", "b.md", "c.md"]);
+    assert.equal(round.report.added, 3);
+    assert.equal(round.report.deleted, 1);
+    assert.deepEqual(notifications, []);
+  } finally {
+    await emit("session_shutdown");
+    await service.close();
+    if (oldState === undefined) delete process.env.REVIEW_CONSOLE_STATE; else process.env.REVIEW_CONSOLE_STATE = oldState;
+  }
+});

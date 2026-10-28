@@ -1,0 +1,1006 @@
+:root {
+  color-scheme: light;
+
+  /* Paper and ink. Ink stays slightly cool; the paper is warm, so headings read
+     against it instead of blending into a tint of the same hue.
+     `paper-*` are the three selectable stocks; `--paper` is the active one. */
+  --paper-ivory: oklch(0.966 0.012 85);
+  --paper-white: oklch(0.978 0.003 85);
+  --paper-warm: oklch(0.955 0.011 82);
+  --paper: var(--paper-ivory);
+  --code-bg: color-mix(in oklab, var(--paper), var(--ink) 4%);
+  --ink: oklch(0.248 0.018 210);
+  --ink-2: oklch(0.455 0.015 210);
+  --ink-3: oklch(0.540 0.012 210);
+  --hair: color-mix(in oklab, var(--paper), var(--ink) 11%);
+  --hair-2: color-mix(in oklab, var(--paper), var(--ink) 19%);
+  --code-ink: oklch(0.330 0.055 265);
+  --signal: oklch(0.878 0.163 108);
+  --signal-edge: oklch(0.610 0.148 100);
+  /* The highlighter stays bright in both themes, so marked text needs dark ink. */
+  --signal-ink: oklch(0.248 0.018 210);
+  --danger: oklch(0.520 0.190 27);
+  --connected: oklch(0.540 0.115 150);
+
+  /* Heading hues are a reading aid, not decoration: they let the eye separate
+     levels while scrolling without re-reading the size difference.
+     h2 is the level readers meet most often, so it gets the most contrast of the
+     three; a lighter teal read as grey against the warm paper. */
+  --heading-1: oklch(0.400 0.090 258);
+  --heading-2: oklch(0.340 0.085 172);
+  --heading-3: oklch(0.400 0.090 305);
+
+  --serif: "Charter", "Iowan Old Style", "Palatino Linotype", Palatino,
+    "Songti SC", "Source Han Serif SC", Georgia, serif;
+  --mono: "SFMono-Regular", "SF Mono", ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
+
+  /* Existing token contract, remapped onto the paper palette. */
+  --bg: var(--paper);
+  --surface: var(--paper);
+  --fg: var(--ink);
+  --muted: var(--ink-2);
+  --border: var(--hair);
+  --accent: oklch(0.400 0.090 258);
+  /* The highlighter band is softer than the signal colour; a pure yellow reads
+     as a warning banner rather than a pen stroke. */
+  --mark-bg: oklch(0.925 0.115 96);
+  /* The band stays light, so marked text keeps dark ink in both themes. */
+  --mark-ink: var(--ink);
+  /* Highlight text keeps its own ink; only the band changes across themes. */
+
+
+  font: 17px/1.68 var(--serif);
+  background: var(--paper);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+:root.dark {
+  color-scheme: dark;
+  --paper: oklch(0.245 0.006 240);
+  --ink: oklch(0.930 0.008 200);
+  --ink-2: oklch(0.720 0.012 200);
+  --ink-3: oklch(0.620 0.012 200);
+  --hair: color-mix(in oklab, var(--paper), var(--ink) 15%);
+  --hair-2: color-mix(in oklab, var(--paper), var(--ink) 27%);
+  --code-bg: color-mix(in oklab, var(--paper), var(--ink) 6%);
+  --code-ink: oklch(0.800 0.070 250);
+  --signal: oklch(0.870 0.168 108);
+  --signal-edge: oklch(0.885 0.170 108);
+  /* Dimmed so the band does not glare on a dark page. */
+  --mark-bg: oklch(0.735 0.105 92);
+  --mark-ink: oklch(0.180 0.010 240);
+  --danger: oklch(0.700 0.160 25);
+  --connected: oklch(0.720 0.115 150);
+  --heading-1: oklch(0.780 0.105 258);
+  --heading-2: oklch(0.820 0.100 172);
+  --heading-3: oklch(0.790 0.100 305);
+  --accent: oklch(0.780 0.105 258);
+}
+
+/* Each mode remembers its own stock. */
+:root[data-paper="white"] { --paper: var(--paper-white); }
+:root[data-paper="warm"] { --paper: var(--paper-warm); }
+:root.dark[data-paper="charcoal"] { --paper: oklch(0.245 0.006 240); }
+:root.dark[data-paper="slate"] { --paper: oklch(0.300 0.015 250); }
+:root.dark[data-paper="warm"] { --paper: oklch(0.340 0.009 80); }
+
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--paper); color: var(--ink); height: 100dvh; display: flex; flex-direction: column; }
+::selection { background: var(--signal); color: var(--signal-ink); }
+:focus-visible { outline: 2px solid var(--signal-edge); outline-offset: 2px; }
+
+header, .toolbar, footer { display: flex; align-items: center; }
+
+/* Reading progress rides on the band hairline (ticket 04). */
+#progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 1px;
+  pointer-events: none;
+}
+#progress > i {
+  display: block;
+  height: 100%;
+  background: var(--signal-edge);
+  transform: scaleX(0);
+  transform-origin: left;
+  will-change: transform;
+}
+#progress[data-idle="true"] { opacity: 0; }
+
+/* ── band ── */
+header {
+  position: relative;
+  height: 48px;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 0 20px 0 16px;
+  border-bottom: 1px solid var(--hair);
+  font-family: var(--mono);
+  font-size: 11px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+header strong {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0;
+  color: var(--ink);
+}
+header strong::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-radius: 0.5px;
+  background: var(--ink);
+}
+header span { margin-left: 12px; color: var(--ink-2); }
+header nav { display: flex; gap: 18px; flex-shrink: 0; }
+.brand { display: flex; align-items: center; min-width: 0; }
+#reply-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+kbd {
+  font: 400 10px/1 var(--mono);
+  color: var(--ink-3);
+  margin-left: 5px;
+  padding: 2px 4px 3px;
+  border: 1px solid var(--hair-2);
+  border-radius: 2px;
+}
+#boot-panel { display: none; padding: 32px; font-family: var(--mono); font-size: 11px; color: var(--ink-2); }
+.booting #boot-panel { display: block; }
+.booting header, .booting main, .booting .reply-navigation { display: none; }
+.booting #message-panel { display: none; }
+
+.reply-navigation {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+  gap: 8px;
+  min-height: 40px;
+  padding: 4px 16px;
+  border-bottom: 1px solid var(--hair);
+  font: 11px/1.5 var(--mono);
+}
+#session-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 24ch; color: var(--ink-2); }
+#reply-position { min-width: 5ch; text-align: center; }
+#reading-state { color: var(--ink-2); margin-right: auto; }
+#other-sessions { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+#other-sessions[hidden] { display: none; }
+#other-sessions a {
+  max-width: min(280px, 80vw);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 4px 8px;
+  border: 1px solid var(--hair-2);
+  border-radius: 3px;
+  color: var(--accent);
+  background: var(--code-bg);
+  text-decoration: none;
+}
+#other-sessions a:hover { border-color: var(--accent); }
+button:disabled { opacity: 0.4; cursor: default; }
+
+#session-connection {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink-2);
+}
+#session-connection[hidden], #toggle-input[hidden], #message-panel[hidden] { display: none; }
+#session-connection i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ink-3);
+}
+#session-connection[data-connected="true"] i { background: var(--connected); }
+#session-connection[data-state="working"] i { background: var(--signal); }
+#session-connection[data-state="working"] { color: var(--ink); }
+#toggle-input {
+  border-color: transparent;
+  color: var(--ink-2);
+}
+#toggle-input[aria-expanded="true"] { color: var(--ink); }
+
+/* A quiet writing margin, not a floating chat card. It never covers the reply. */
+#message-panel {
+  flex: none;
+  border-top: 1px solid var(--hair);
+  padding: 12px max(48px, calc((100% - 1120px) / 2 + 48px)) 10px;
+  background: var(--paper);
+}
+#message-input {
+  flex: none;
+  height: 54px;
+  max-height: 180px;
+  padding: 10px 14px;
+  border: 1px solid var(--hair-2);
+  border-radius: 6px;
+  background: var(--code-bg);
+  font: 400 15px/1.6 var(--serif);
+  overflow-y: auto;
+}
+#message-input:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
+#message-panel:focus-within { border-top-color: var(--hair-2); }
+.message-caption {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px 20px;
+  margin-top: 6px;
+  color: var(--ink-3);
+  font: 10px/1.5 var(--mono);
+}
+#message-status { overflow-wrap: anywhere; }
+#message-status[data-error="true"] { color: var(--danger); }
+
+/* ── frame: a page, not a card ── */
+main {
+  display: grid;
+  grid-template-columns: minmax(280px, 34%) minmax(0, 1fr);
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  overflow: hidden;
+  background: var(--paper);
+}
+section { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+.editor { border-right: 1px solid var(--hair); }
+.history-panel { display: none; border-right: 1px solid var(--hair); }
+.reading-mode main { grid-template-columns: minmax(0, 1fr); grid-template-rows: 1fr; }
+.reading-mode .editor { display: none; }
+.history-mode main { grid-template-columns: minmax(240px, 25%) minmax(0, 1fr); }
+.history-mode .history-panel { display: flex; }
+
+.toolbar {
+  min-height: 34px;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--hair);
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-2);
+}
+.toolbar > div { display: flex; gap: 16px; }
+.history-panel .toolbar { gap: 8px; padding-block: 8px; }
+.history-panel .toolbar > span { white-space: nowrap; }
+#clear-history {
+  flex-shrink: 0;
+  border: 0;
+  padding: 4px 0 4px 8px;
+  background: none;
+  color: var(--ink-2);
+  font: inherit;
+  white-space: nowrap;
+}
+#clear-history:hover { color: var(--danger); }
+
+button {
+  border: 1px solid var(--hair);
+  border-radius: 2px;
+  padding: 5px 10px;
+  background: var(--paper);
+  color: var(--fg);
+  font: inherit;
+  cursor: pointer;
+}
+button:hover { background: var(--code-bg); }
+button.primary { color: var(--accent); }
+
+/* Band actions are text with a hairline underline on hover, not boxed controls. */
+header button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  color: var(--ink-2);
+  font: 400 11px/1 var(--mono);
+}
+header button::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 4px;
+  height: 2px;
+  background: var(--signal);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+header button:hover { background: none; color: var(--ink); }
+header button:hover::after,
+header button[aria-expanded="true"]::after { transform: scaleX(1); }
+header button[aria-expanded="true"] { color: var(--ink); }
+#theme { justify-content: center; width: 32px; flex-shrink: 0; }
+#theme svg { pointer-events: none; }
+/* Paper stock picker, styled to match the band's text actions. */
+header select {
+  min-height: 32px;
+  padding: 0 2px;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  color: var(--ink-2);
+  font: 400 11px/1 var(--mono);
+  cursor: pointer;
+}
+header select:hover { color: var(--ink); }
+button:focus-visible,
+textarea:focus-visible {
+  outline: 1px solid var(--signal-edge);
+  outline-offset: -1px;
+}
+textarea:focus-visible { outline-offset: -2px; border-radius: 0; }
+
+#history-list { flex: 1; min-height: 0; overflow: auto; padding: 4px; }
+#history-list button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  border-radius: 2px;
+  margin-bottom: 0;
+  padding: 9px 10px;
+  overflow-wrap: anywhere;
+  background: none;
+  color: var(--ink);
+  font: 400 13px/1.35 var(--serif);
+}
+#history-list button + button { border-top: 1px solid var(--hair); }
+#history-list button[aria-current="true"] {
+  background: var(--code-bg);
+  color: var(--ink);
+  box-shadow: inset 2px 0 0 var(--signal-edge);
+}
+
+textarea {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  border: 0;
+  padding: 22px 20px 40px;
+  resize: none;
+  background: var(--code-bg);
+  color: var(--ink);
+  font: 400 12.5px/1.72 var(--mono);
+  tab-size: 2;
+}
+textarea::placeholder { color: var(--ink-3); }
+
+footer {
+  min-height: 28px;
+  padding: 0 16px;
+  border-top: 1px solid var(--hair);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--ink-3);
+}
+#notice {
+  margin: 0;
+  padding: 8px 16px;
+  background: var(--code-bg);
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+.canvas { position: relative; flex: 1; min-height: 0; overflow: auto; scrollbar-width: thin; }
+#empty {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  padding: 56px 0;
+  pointer-events: none;
+  color: var(--ink-3);
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+/* ── derived summary row ── */
+.docmeta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 14px 0 0;
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1;
+  color: var(--ink-2);
+}
+.docmeta > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+.docmeta > .rule {
+  display: block;
+  flex: none;
+  width: 1px;
+  height: 11px;
+  background: var(--hair-2);
+}
+.docmeta > .failed { color: var(--danger); }
+.docmeta .swatch {
+  /* Type carries ~1.5px of side bearing at this size; without the offset the
+     solid square paints left of the headings and body text above it. */
+  margin-left: 1.5px;
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: 0.5px;
+  background: var(--signal);
+  transition: background-color 160ms ease;
+}
+/* The swatch doubles as the render indicator. */
+.docmeta[data-state="rendering"] .swatch {
+  animation: swatch-pulse 1100ms ease-in-out infinite;
+}
+.docmeta[data-state="failed"] .swatch { background: var(--danger); }
+@keyframes swatch-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.28; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .docmeta[data-state="rendering"] .swatch {
+    animation: none;
+    opacity: 0.55;
+  }
+}
+
+/* ── the sheet ──
+   Functional, not a reader: the sheet fills the canvas and text grows with the
+   window. No fixed measure, so text and figures share one width and headings
+   are not squeezed into a narrow column. */
+.markdown-body {
+  box-sizing: border-box;
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 56px 48px 140px;
+  font-family: var(--serif);
+  font-size: 17px;
+  line-height: 1.68;
+  overflow-wrap: anywhere;
+}
+.markdown-body > :first-child { margin-top: 0; }
+.markdown-body h1 {
+  font-size: 34px;
+  line-height: 1.13;
+  font-weight: 700;
+  letter-spacing: -0.022em;
+  color: var(--heading-1);
+  margin: 0;
+  text-wrap: balance;
+}
+.markdown-body h2 {
+  /* One step larger than before: colour alone did not separate this level from
+     16px body text clearly enough, and h2 is the level readers see most. */
+  font-size: 21px;
+  line-height: 1.32;
+  font-weight: 700;
+  letter-spacing: -0.012em;
+  color: var(--heading-2);
+  border: 0;
+  padding: 0;
+  margin: 44px 0 0;
+}
+.markdown-body h3 {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.5;
+  letter-spacing: 0;
+  color: var(--heading-3);
+  margin: 30px 0 0;
+}
+.markdown-body h4,
+.markdown-body h5,
+.markdown-body h6 {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0;
+  color: var(--ink);
+  margin: 24px 0 0;
+}
+.markdown-body p { margin: 16px 0 0; }
+.markdown-body h2 + p, .markdown-body h3 + p { margin-top: 10px; }
+.markdown-body strong { font-weight: 700; }
+.markdown-body a {
+  color: var(--ink);
+  text-decoration: none;
+  background-image: linear-gradient(var(--signal), var(--signal));
+  background-repeat: no-repeat;
+  background-size: 100% 2px;
+  background-position: 0 100%;
+  padding-bottom: 1px;
+}
+.markdown-body a:hover { background-size: 100% 100%; }
+.markdown-body mark {
+  /* A highlighter stroke, not a filled block: the band sits on the lower half of
+     the text and slightly overruns it. The UA default for <mark> is a solid
+     yellow background-color, which would stack under the gradient. */
+  background-color: transparent;
+  background-image: linear-gradient(to bottom,
+    transparent 0.28em,
+    var(--mark-bg) 0.36em,
+    var(--mark-bg) 0.84em,
+    transparent 0.92em);
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+  color: var(--mark-ink);
+  padding: 0 3px;
+  margin: 0 -3px;
+  border-radius: 0;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+:root.dark .markdown-body mark {
+  background: var(--mark-bg);
+  border-radius: 2px;
+}
+.markdown-body ul, .markdown-body ol { margin: 16px 0 0; padding-left: 1.15em; }
+.markdown-body li { margin-top: 7px; }
+.markdown-body li::marker { color: var(--ink-3); font-family: var(--mono); font-size: 0.8em; }
+.markdown-body .task-list-item { list-style: none; }
+.markdown-body .task-list-item-checkbox {
+  margin: 0 .5em 0 -1.4em;
+  vertical-align: middle;
+  accent-color: var(--ink);
+}
+.markdown-body blockquote {
+  margin: 20px 0 0;
+  padding: 0 0 0 16px;
+  border-left: 2px solid var(--hair-2);
+  color: var(--ink-2);
+  font-size: 0.94em;
+}
+.markdown-body blockquote > :first-child { margin-top: 0; }
+.markdown-body hr { border: 0; border-top: 1px solid var(--hair-2); margin: 40px 0; }
+
+.markdown-body code {
+  padding: 1px 5px;
+  border-radius: 2px;
+  background: var(--code-bg);
+  color: var(--code-ink);
+  font-family: var(--mono);
+  font-size: 0.845em;
+  /* A hairline keeps inline code distinct when the tint alone is too quiet. */
+  box-shadow: inset 0 0 0 1px var(--hair);
+}
+/* ── fenced code: the language doubles as the copy button ──
+   The label sits in the top-right corner and becomes "copy" on hover, so the
+   block needs no header row of its own. */
+.code-block {
+  position: relative;
+  margin: 20px 0 0;
+  background: var(--code-bg);
+  border-radius: 2px;
+}
+.code-copy {
+  position: absolute;
+  top: 0;
+  right: 0;
+  padding: 9px 12px;
+  border: 0;
+  border-radius: 2px;
+  background: none;
+  color: var(--ink-3);
+  font: 400 10.5px/1 var(--mono);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  /* Always visible so the affordance is discoverable; hover only makes it clearer. */
+  opacity: 0.45;
+  transition: opacity 120ms ease, color 120ms ease;
+}
+.code-copy-label { display: none; }
+.code-block:hover .code-copy,
+.code-copy:focus-visible { opacity: 1; }
+.code-block:hover .code-lang,
+.code-copy:focus-visible .code-lang { display: none; }
+.code-block:hover .code-copy-label,
+.code-copy:focus-visible .code-copy-label { display: inline; }
+/* Without a fence language the button only has the action, so always show it. */
+.code-copy[data-empty-label="true"] .code-copy-label { display: inline; }
+.code-copy[data-empty-label="true"] { opacity: 0.45; }
+.code-block:hover .code-copy[data-empty-label="true"] { opacity: 1; }
+.code-copy[data-state="done"] { opacity: 1; color: var(--ink); }
+.code-copy[data-state="done"] .code-lang { display: none; }
+.code-copy[data-state="done"] .code-copy-label { display: inline; }
+
+.markdown-body pre {
+  margin: 0;
+  padding: 14px 18px 16px;
+  border: 0;
+  border-radius: 2px;
+  background: none;
+  overflow-x: auto;
+  font-size: 12.5px;
+  line-height: 1.68;
+}
+.markdown-body pre code {
+  padding: 0;
+  background: none;
+  box-shadow: none;
+  color: var(--ink);
+  font-size: inherit;
+}
+
+.markdown-body table {
+  display: block;
+  overflow-x: auto;
+  margin: 22px 0 0;
+  border-collapse: collapse;
+  font-family: var(--mono);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.5;
+}
+.markdown-body th,
+.markdown-body td {
+  border: 0;
+  border-bottom: 1px solid var(--hair);
+  padding: 9px 14px 9px 0;
+  white-space: nowrap;
+  background: none;
+}
+.markdown-body th {
+  text-align: left;
+  font-weight: 400;
+  font-size: 11px;
+  color: var(--ink-2);
+  padding-bottom: 7px;
+  border-bottom: 1px solid var(--hair-2);
+}
+.markdown-body tr:last-child td { border-bottom: 1px solid var(--hair-2); }
+
+.markdown-body img { max-width: 100%; }
+.markdown-body .katex-display { margin: 24px 0; overflow-x: auto; overflow-y: hidden; padding-block: 4px; }
+.markdown-body .katex { font-size: 1.06em; }
+.markdown-body .footnotes {
+  margin: 40px 0 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--hair-2);
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--ink-2);
+}
+/* markdown-it-footnote emits its own rule; the block already carries one. */
+.markdown-body .footnotes > hr { display: none; }
+.markdown-body .footnote-item p { margin-block: 0.35em; }
+.markdown-body .footnote-ref a { background: none; }
+
+/* ── figures ──
+   A figure gets a frame so its boundary is legible at a glance, and the frame
+   spans exactly the text width: text and figures share one column, so nothing
+   extends past the sheet. */
+.mermaid-diagram,
+.function-plot-block {
+  position: relative;
+  width: 100%;
+  max-width: none;
+  margin: 26px 0 0;
+  padding: 20px 20px 16px;
+  border: 1px solid var(--hair-2);
+  border-radius: 3px;
+  background: color-mix(in oklab, var(--paper), var(--ink) 2.5%);
+  overflow: hidden;
+}
+.function-plot-block { padding-bottom: 4px; }
+
+/* Pele parks its zoom control over the artwork. Lift it inside the frame so it
+   never covers a node, and reserve the strip it occupies. */
+.mermaid-diagram { padding-top: 34px; }
+.mermaid-diagram > .pele-zoom { top: 8px !important; right: 8px !important; }
+/* Pele draws each control as a bare icon; without this the icon takes the hit
+   and the button reports no actionable target to hit-testing tools. */
+.mermaid-diagram > .pele-zoom svg,
+.mermaid-diagram > .pele-zoom path { pointer-events: none; }
+.mermaid-diagram > .pele-zoom button { pointer-events: auto; }
+/* Frames are wider than a text column, so tall flowcharts have room to grow.
+   No height clamp: Pele treats the svg's rendered size as its minimum zoom, so a
+   max-height there collapsed zoom-in and zoom-out into the same two levels.
+   A tall diagram simply scrolls with the page. */
+.mermaid-diagram > svg.pele {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  margin-inline: auto;
+}
+.mermaid-diagram > .pele-zoom { flex-direction: row !important; }
+.diagram-error { height: auto; min-height: 80px; color: var(--danger); }
+.diagram-error pre { margin: 0; white-space: pre-wrap; border: 0; background: none; }
+
+.plot-title {
+  padding: 0;
+  margin-bottom: 8px;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--ink-2);
+}
+.plot-canvas { width: 100%; }
+.plot-canvas svg { display: block; max-width: 100%; }
+.plot-canvas text { fill: var(--ink-2); font: 11px var(--mono); }
+.plot-canvas .axis path { stroke: var(--ink-3); }
+.plot-canvas .axis .tick line { stroke: var(--hair-2); opacity: 1; }
+.plot-canvas .origin { stroke: var(--ink-3); opacity: .7; }
+.plot-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 20px;
+  list-style: none;
+  margin: 0;
+  padding: 8px 0 0 !important;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-2);
+}
+.plot-legend li { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.plot-legend span { display: inline-block; width: 18px; height: 2px; flex-shrink: 0; }
+
+
+/* ── syntax highlighting ──
+   GitHub palettes for light and dark; the block background stays the code tint.
+   Generated from highlight.js styles/github.css and github-dark.css. */
+/*!
+  Theme: GitHub
+  Description: Light theme as seen on github.com
+  Author: github.com
+  Maintainer: @Hirse
+  Updated: 2021-05-15
+
+  Outdated base version: https://github.com/primer/github-syntax-light
+  Current colors taken from GitHub's CSS
+*/
+.hljs {
+  color: var(--ink)
+}
+.hljs-doctag,
+.hljs-keyword,
+.hljs-meta .hljs-keyword,
+.hljs-template-tag,
+.hljs-template-variable,
+.hljs-type,
+.hljs-variable.language_ {
+  /* prettylights-syntax-keyword */
+  color: #d73a49
+}
+.hljs-title,
+.hljs-title.class_,
+.hljs-title.class_.inherited__,
+.hljs-title.function_ {
+  /* prettylights-syntax-entity */
+  color: #6f42c1
+}
+.hljs-attr,
+.hljs-attribute,
+.hljs-literal,
+.hljs-meta,
+.hljs-number,
+.hljs-operator,
+.hljs-variable,
+.hljs-selector-attr,
+.hljs-selector-class,
+.hljs-selector-id {
+  /* prettylights-syntax-constant */
+  color: #005cc5
+}
+.hljs-regexp,
+.hljs-string,
+.hljs-meta .hljs-string {
+  /* prettylights-syntax-string */
+  color: #032f62
+}
+.hljs-built_in,
+.hljs-symbol {
+  /* prettylights-syntax-variable */
+  color: #e36209
+}
+.hljs-comment,
+.hljs-code,
+.hljs-formula {
+  /* prettylights-syntax-comment */
+  color: #6a737d
+}
+.hljs-name,
+.hljs-quote,
+.hljs-selector-tag,
+.hljs-selector-pseudo {
+  /* prettylights-syntax-entity-tag */
+  color: #22863a
+}
+.hljs-subst {
+  /* prettylights-syntax-storage-modifier-import */
+  color: #24292e
+}
+.hljs-section {
+  /* prettylights-syntax-markup-heading */
+  color: #005cc5;
+  font-weight: bold
+}
+.hljs-bullet {
+  /* prettylights-syntax-markup-list */
+  color: #735c0f
+}
+.hljs-emphasis {
+  /* prettylights-syntax-markup-italic */
+  color: #24292e;
+  font-style: italic
+}
+.hljs-strong {
+  /* prettylights-syntax-markup-bold */
+  color: #24292e;
+  font-weight: bold
+}
+.hljs-addition {
+  /* prettylights-syntax-markup-inserted */
+  color: #22863a;
+}
+.hljs-deletion {
+  /* prettylights-syntax-markup-deleted */
+  color: #b31d28;
+}
+.hljs-char.escape_,
+.hljs-link,
+.hljs-params,
+.hljs-property,
+.hljs-punctuation,
+.hljs-tag {
+  /* purposely ignored */
+  
+}
+:root.dark .hljs {
+  color: var(--ink)
+}
+:root.dark .hljs-doctag,
+:root.dark .hljs-keyword,
+:root.dark .hljs-meta .hljs-keyword,
+:root.dark .hljs-template-tag,
+:root.dark .hljs-template-variable,
+:root.dark .hljs-type,
+:root.dark .hljs-variable.language_ {
+  /* prettylights-syntax-keyword */
+  color: #ff7b72
+}
+:root.dark .hljs-title,
+:root.dark .hljs-title.class_,
+:root.dark .hljs-title.class_.inherited__,
+:root.dark .hljs-title.function_ {
+  /* prettylights-syntax-entity */
+  color: #d2a8ff
+}
+:root.dark .hljs-attr,
+:root.dark .hljs-attribute,
+:root.dark .hljs-literal,
+:root.dark .hljs-meta,
+:root.dark .hljs-number,
+:root.dark .hljs-operator,
+:root.dark .hljs-variable,
+:root.dark .hljs-selector-attr,
+:root.dark .hljs-selector-class,
+:root.dark .hljs-selector-id {
+  /* prettylights-syntax-constant */
+  color: #79c0ff
+}
+:root.dark .hljs-regexp,
+:root.dark .hljs-string,
+:root.dark .hljs-meta .hljs-string {
+  /* prettylights-syntax-string */
+  color: #a5d6ff
+}
+:root.dark .hljs-built_in,
+:root.dark .hljs-symbol {
+  /* prettylights-syntax-variable */
+  color: #ffa657
+}
+:root.dark .hljs-comment,
+:root.dark .hljs-code,
+:root.dark .hljs-formula {
+  /* prettylights-syntax-comment */
+  color: #8b949e
+}
+:root.dark .hljs-name,
+:root.dark .hljs-quote,
+:root.dark .hljs-selector-tag,
+:root.dark .hljs-selector-pseudo {
+  /* prettylights-syntax-entity-tag */
+  color: #7ee787
+}
+:root.dark .hljs-subst {
+  /* prettylights-syntax-storage-modifier-import */
+  color: #c9d1d9
+}
+:root.dark .hljs-section {
+  /* prettylights-syntax-markup-heading */
+  color: #1f6feb;
+  font-weight: bold
+}
+:root.dark .hljs-bullet {
+  /* prettylights-syntax-markup-list */
+  color: #f2cc60
+}
+:root.dark .hljs-emphasis {
+  /* prettylights-syntax-markup-italic */
+  color: #c9d1d9;
+  font-style: italic
+}
+:root.dark .hljs-strong {
+  /* prettylights-syntax-markup-bold */
+  color: #c9d1d9;
+  font-weight: bold
+}
+:root.dark .hljs-addition {
+  /* prettylights-syntax-markup-inserted */
+  color: #aff5b4;
+}
+:root.dark .hljs-deletion {
+  /* prettylights-syntax-markup-deleted */
+  color: #ffdcd7;
+}
+:root.dark .hljs-char.escape_,
+:root.dark .hljs-link,
+:root.dark .hljs-params,
+:root.dark .hljs-property,
+:root.dark .hljs-punctuation,
+:root.dark .hljs-tag {
+  /* purposely ignored */
+  
+}
+
+[hidden] { display: none !important; }
+
+.pele {
+  --pele-bg: var(--paper);
+  --pele-fg: var(--ink);
+  --pele-muted: var(--ink-2);
+  --pele-line: var(--ink);
+  /* Node fill is a diagram default only: a `style`/`classDef` fill in the
+     diagram wins, because Pele emits it as an inline style. */
+  --pele-surface: color-mix(in oklab, var(--paper), var(--ink) 5%);
+  --pele-surface-alt: var(--paper);
+  --pele-border: var(--hair);
+  --pele-accent: var(--accent);
+  --pele-radius: 2px;
+  --pele-font: var(--mono);
+  --pele-font-mono: var(--mono);
+}
+
+@media (max-width: 700px) {
+  #message-panel { padding-inline: 20px; }
+  main { grid-template-columns: 1fr; grid-template-rows: 40% 60%; }
+  .editor { border-right: 0; border-bottom: 1px solid var(--hair); }
+  .history-mode main { grid-template-columns: 1fr; grid-template-rows: 35% 65%; }
+  .history-panel { border-right: 0; border-bottom: 1px solid var(--hair); }
+  header { padding-inline: 12px; gap: 12px; }
+  header nav { gap: 10px; }
+  header span { display: none; }
+  kbd { display: none; }
+  .markdown-body { padding: 32px 20px 80px; font-size: 16.5px; }
+  .markdown-body h1 { font-size: 27px; }
+  .mermaid-diagram, .function-plot-block { padding: 16px 12px 12px; }
+  .mermaid-diagram { padding-top: 30px; }
+}
+
