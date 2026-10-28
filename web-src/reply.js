@@ -139,6 +139,14 @@ function render(text) {
   } else {
     preview.innerHTML = markdown.render(text, env);
   }
+  // Only isolated inline path tokens become links; code blocks remain literal.
+  preview.querySelectorAll("code:not(pre code)").forEach(code => {
+    if (code.closest("a")) return;
+    const path = code.textContent;
+    if (!/^(?:\.{0,2}\/)?[^\s<>`]+\.(?:md|mdx|markdown|[cm]?[jt]sx?|json|go|py|rs|css|html|ya?ml|toml|sh|txt)(?::\d+(?::\d+)?)?(?:#L\d+)?$/i.test(path)) return;
+    const link = document.createElement("a"); link.setAttribute("href", path);
+    code.replaceWith(link); link.append(code);
+  });
 
   const failed = new Set();
   const updateStatus = () => {

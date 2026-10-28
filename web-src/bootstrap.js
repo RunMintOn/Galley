@@ -24,19 +24,23 @@ if (standby) {
 
   async function handOff() {
     const id = crypto.randomUUID();
+    let protectedPage = false;
     const received = await new Promise((resolve) => {
       const timeout = setTimeout(() => resolve(false), 5000);
       channel.onmessage = ({ data }) => {
         if (data?.type !== "received" || data.id !== id) return;
         clearTimeout(timeout);
-        resolve(data.visible === true);
+        if (data.protected) {
+          protectedPage = true;
+        }
+        resolve(data.visible === true || data.protected === true);
       };
       channel.postMessage({ type: "reply", id, hash: location.hash });
     });
     channel.onmessage = null;
     if (received) {
       channel.close();
-      message.textContent = "Reply sent to the open preview. You can close this tab.";
+      message.textContent = protectedPage ? "已有审查台有未保存修改。请返回原页面；此页可关闭。" : "已转到现有审查台；此页可关闭。";
       window.close();
     }
     return received;
@@ -55,6 +59,10 @@ if (standby) {
         if (visible) {
           if (data.hash) await preview.focusSession(data.hash);
         } else {
+          if (preview.hasUnsavedChanges()) {
+            channel.postMessage({ type: "received", id: data.id, visible: false, protected: true });
+            return;
+          }
           // Background timers are throttled. Save the reading position and let the clicked tab open immediately.
           preview.savePosition();
         }

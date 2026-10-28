@@ -35,7 +35,7 @@ export function createFileEditor(parent, file, onSave, onChange) {
     get text() { return view.state.doc.toString(); },
     get dirty() { return view.state.doc.toString() !== original; },
     get editable() { return editable; },
-    markSaved() { original = view.state.doc.toString(); onChange(); },
+    markSaved(content) { original = content; onChange(); },
     enable() { if (!file.partial) { editable = true; view.dispatch({ effects: access.reconfigure(permissions()) }); view.focus(); onChange(); } },
     goToLine(line) { const target = view.state.doc.line(Math.min(view.state.doc.lines, Math.max(1, line))); view.dispatch({ selection: { anchor: target.from }, effects: EditorView.scrollIntoView(target.from, { y: "center" }) }); },
     destroy() { view.destroy(); },

@@ -18,7 +18,6 @@
   "files": [
     "dist",
     "README.md",
-    "LICENSE",
     "migration"
   ],
   "scripts": {
@@ -26,8 +25,11 @@
     "typecheck": "tsc --noEmit",
     "test": "node --experimental-strip-types --test test/*.test.ts",
     "test:e2e": "node --experimental-strip-types test/browser.mts",
+    "verify:package": "node --experimental-strip-types test/package.mts",
+    "verify:migration": "node --experimental-strip-types test/migration.mts",
     "check": "npm run typecheck && npm test && npm run build",
-    "start": "node dist/server.mjs",
+    "start": "node dist/cli.mjs",
+    "stop": "node dist/cli.mjs stop",
     "prepack": "npm run build"
   },
   "peerDependencies": {
@@ -41,9 +43,7 @@
     "@codemirror/state": "^6.5.0",
     "@codemirror/view": "^6.38.0",
     "@earendil-works/pi-coding-agent": "^1.4.0",
-    "@lezer/highlight": "^1.2.1",
     "@mdit/plugin-katex": "1.1.4",
-    "@types/diff": "^8.0.0",
     "@types/node": "^22.20.5",
     "@types/ws": "^8.18.1",
     "diff": "^8.0.4",

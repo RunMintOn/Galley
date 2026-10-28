@@ -36,6 +36,13 @@ test("a completed round keeps its report and original reply paired after reconne
     assert.equal(result.body.report.id, "report-1");
     assert.equal((await fetch(f.service.origin + "/api/projects")).status, 403);
     assert.equal((await fetch(f.service.origin + "/api/projects", { headers: { Authorization: "Bearer test-secret", Origin: "https://evil.test" } })).status, 403);
+    await f.service.close();
+    const restarted = await startConsole({ directory: f.directory, token: "test-secret" });
+    try {
+      const restored = await (await fetch(restarted.origin + "/api/round?session=session-a&id=round-1", { headers: { Authorization: "Bearer test-secret" } })).json();
+      assert.equal(restored.reply, "# 原始回复\n\n完成了。");
+      assert.equal(restored.report.id, "report-1");
+    } finally { await restarted.close(); }
   } finally { await f.service.close(); }
 });
 

@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
 import { homedir } from "node:os";
+import { BUILD } from "./build.ts";
 
 export interface Service { origin: string; token: string; pid: number }
 export const stateDirectory = () => process.env.REVIEW_CONSOLE_STATE || join(process.env.PI_CODING_AGENT_DIR || join(homedir(), ".pi/agent"), "review-console");
@@ -15,8 +16,18 @@ async function existing(directory: string): Promise<Service | undefined> {
     const response = await fetch(service.origin + "/api/projects", {
       headers: { Authorization: `Bearer ${service.token}` }, signal: AbortSignal.timeout(1200),
     });
-    if (response.ok) return service;
-  } catch { /* Startup retries only; idle operation has no polling. */ }
+    if (response.ok) {
+      const health = await (await fetch(service.origin + "/health", { signal: AbortSignal.timeout(1200) })).json();
+      if (health.app !== "pi-review-console") return;
+      if (health.build !== BUILD) {
+        const error = new Error("审查台服务来自旧构建。请运行 npm run stop，再 npm start，然后 /reload。");
+        error.name = "ServiceVersionError"; throw error;
+      }
+      return service;
+    }
+  } catch (e) {
+    if (e instanceof Error && e.name === "ServiceVersionError") throw e;
+  }
 }
 export async function ensureService(directory = stateDirectory()): Promise<Service> {
   await mkdir(directory, { recursive: true, mode: 0o700 });

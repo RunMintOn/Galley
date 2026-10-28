@@ -6,6 +6,7 @@ import { join, resolve } from "node:path";
 import { execFileSync } from "node:child_process";
 import { startConsole } from "../src/server.ts";
 import { diffFile } from "../src/diff.ts";
+import { startSessionInput } from "../src/session-input.mjs";
 
 const directory = await mkdtemp(join(tmpdir(), "review-browser-"));
 const root = join(directory, "project-a");
@@ -18,6 +19,12 @@ git("init", "-b", "main"); git("add", ".");
 git("-c", "user.name=Test", "-c", "user.email=test@example.test", "commit", "-m", "first historical version");
 const historicalHash = git("rev-parse", "HEAD");
 const service = await startConsole({ directory, port: 0, token: "browser-secret", web: resolve("dist/web") });
+let idle = true;
+const messages = [];
+const bridge = await startSessionInput({ isIdle: () => idle, send(text) {
+  if (text === "reject") throw new Error("模拟拒绝");
+  messages.push(text); idle = false; bridge.received({ role: "user", content: text }); bridge.update("");
+} });
 const headers = { Authorization: "Bearer browser-secret", "Content-Type": "application/json" };
 const api = async (path, body, method = body ? "POST" : "GET") => {
   const r = await fetch(service.origin + "/api/" + path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
@@ -31,7 +38,7 @@ await writeFile(sessionFile, [
   { type: "message", id: "old", message: { role: "assistant", content: [{ type: "text", text: "# 上一轮" }] } },
   { type: "message", id: "answer", message: { role: "assistant", content: [{ type: "text", text: markdown }] } },
 ].map(x => JSON.stringify(x)).join("\n") + "\n");
-await api("register", { cwd: root, sessionId: "a", file: sessionFile, title: "项目 A 会话" });
+await api("register", { cwd: root, sessionId: "a", file: sessionFile, title: "项目 A 会话", bridge: { origin: bridge.origin, token: bridge.token } });
 const file = { path: "README.md", status: "Modified", added: 1, deleted: 1, diff: diffFile("README.md", "# 旧标题\n", "# 当前文件\n") };
 await api("round", { id: "r0", sessionId: "a", entryId: "old", outcome: "completed", end: 0, notice: "上一轮没有捕获" });
 await api("round", { id: "r1", sessionId: "a", entryId: "answer", outcome: "completed", end: 1, report: { id: "r1", cwd: root, start: 0, end: 1, outcome: "completed", prompts: ["修改标题"], files: [file], added: 1, deleted: 1 } });
@@ -50,6 +57,37 @@ try {
   await page.locator("#document .function-plot-block svg").first().waitFor({ timeout: 30000 });
   assert.ok(await page.locator("#document .katex").count());
   assert.match(await page.locator("#content").textContent(), /旧标题/);
+  assert.equal(await page.locator('[data-layout="split"]').isDisabled(), true);
+  await page.click('[data-collapse="reply-pane"]');
+  await page.waitForFunction(() => !document.querySelector('[data-layout="split"]').disabled);
+  await page.click('[data-layout="split"]');
+  assert.equal(await page.locator(".diffs").getAttribute("data-layout"), "split");
+  await page.click('[data-collapse="reply-pane"]');
+  await page.click('[data-layout="unified"]');
+  const pageCDP = await page.context().newCDPSession(page);
+  const browserCDP = await browser.newBrowserCDPSession();
+  await pageCDP.send("Performance.enable");
+  async function measure() {
+    await pageCDP.send("HeapProfiler.collectGarbage");
+    const metrics = await pageCDP.send("Performance.getMetrics");
+    const processes = (await browserCDP.send("SystemInfo.getProcessInfo")).processInfo;
+    const renderers = processes.filter(p => p.type === "renderer");
+    const rss = renderers.reduce((sum, p) => sum + Number(execFileSync("ps", ["-o", "rss=", "-p", String(p.id)], { encoding: "utf8" }).trim() || 0) * 1024, 0);
+    const trace = [];
+    const collected = data => trace.push(...data.value);
+    browserCDP.on("Tracing.dataCollected", collected);
+    await browserCDP.send("Tracing.start", { categories: "blink.user_timing,disabled-by-default-memory-infra", transferMode: "ReportEvents" });
+    await page.evaluate(() => performance.mark("review-console-memory-target"));
+    await browserCDP.send("Tracing.requestMemoryDump", { levelOfDetail: "light", deterministic: true });
+    const stopped = new Promise(r => browserCDP.once("Tracing.tracingComplete", r));
+    await browserCDP.send("Tracing.end"); await stopped;
+    browserCDP.off("Tracing.dataCollected", collected);
+    const targetPID = trace.find(e => e.name === "review-console-memory-target")?.pid;
+    const dumps = trace.filter(e => e.args?.dumps?.process_totals).map(e => ({ pid: e.pid, totals: e.args.dumps.process_totals }));
+    const target = dumps.find(d => d.pid === targetPID);
+    return { jsHeapBytes: metrics.metrics.find(m => m.name === "JSHeapUsedSize")?.value, allRendererRSSBytes: rss, rendererProcesses: renderers.length, targetPID, targetPrivateFootprintBytes: target?.totals.private_footprint_bytes ? parseInt(target.totals.private_footprint_bytes, 16) : null, service: await api("metrics") };
+  }
+  const baseline3 = await measure();
   assert.equal(await page.locator(".project").count(), 3);
   await page.click("#previous");
   await page.waitForFunction(() => document.querySelector("#document h1")?.textContent === "上一轮");
@@ -77,6 +115,22 @@ try {
   await page.getByRole("button", { name: "保存 ⌘S", exact: true }).click();
   await page.waitForFunction(() => document.querySelector(".file-state")?.textContent !== "未保存");
   assert.match(await readFile(join(root, "README.md"), "utf8"), /手动修改/);
+  const savedText = await readFile(join(root, "README.md"), "utf8");
+  let releaseSave, saveReceived;
+  const responseGate = new Promise(resolve => { releaseSave = resolve; });
+  const requestGate = new Promise(resolve => { saveReceived = resolve; });
+  await page.route("**/api/file", async route => {
+    if (route.request().method() !== "PUT") return route.continue();
+    const response = await route.fetch(); saveReceived(); await responseGate; await route.fulfill({ response });
+  });
+  await page.locator(".cm-content").fill("# 保存中的版本\n");
+  await page.getByRole("button", { name: "保存 ⌘S", exact: true }).click();
+  await requestGate;
+  await page.locator(".cm-content").fill(savedText);
+  releaseSave();
+  await page.waitForFunction(() => document.querySelector(".file-state")?.textContent === "未保存");
+  assert.match(await readFile(join(root, "README.md"), "utf8"), /保存中的版本/);
+  await page.unroute("**/api/file");
   await page.locator(".cm-content").fill("# 保留草稿\n");
   await page.waitForFunction(() => document.querySelector(".file-state")?.textContent === "未保存");
   await writeFile(join(root, "README.md"), "# Agent 改动\n");
@@ -124,6 +178,62 @@ try {
   await page.locator(".cm-content[contenteditable=true]").waitFor();
   assert.match(await page.locator(".cm-content").textContent(), /Agent 改动/);
   assert.equal(await page.locator("#document h1").textContent(), "本轮完成");
+  await page.click("#show-source");
+  await page.fill("#reply-source", "# 临时源码\n\n$1+1=2$");
+  await page.waitForFunction(() => document.querySelector("#document h1")?.textContent === "临时源码");
+  assert.match((await api("round?session=a&id=r1")).reply, /本轮完成/);
+  await page.click("#show-source");
+  await page.evaluate(() => {
+    const data = new DataTransfer(); data.setData("text/plain", "# 粘贴预览");
+    document.body.dispatchEvent(new ClipboardEvent("paste", { clipboardData: data, bubbles: true, cancelable: true }));
+  });
+  await page.waitForFunction(() => document.querySelector("#document h1")?.textContent === "粘贴预览");
+  await page.click("#theme");
+  assert.equal(await page.locator("html").getAttribute("class"), "");
+  assert.equal(await page.locator("#reply-pane").evaluate(el => el.classList.contains("dark")), false);
+  await page.click("#theme");
+  await page.click("#latest");
+  await page.waitForFunction(() => document.querySelector("#document h1")?.textContent === "本轮完成");
+  await page.click("#toggle-input");
+  await page.fill("#message-input", "/skill:literal 中文");
+  await page.locator("#message-input").evaluate(el => {
+    el.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", isComposing: true, bubbles: true }));
+    el.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", keyCode: 229, bubbles: true }));
+  });
+  assert.equal(messages.length, 0);
+  await page.press("#message-input", "Enter");
+  await page.waitForFunction(() => document.querySelector("#message-input").value === "");
+  assert.deepEqual(messages, ["/skill:literal 中文"]);
+  await page.fill("#message-input", "忙时草稿");
+  await page.press("#message-input", "Enter");
+  assert.equal(messages.length, 1);
+  idle = true; bridge.update("");
+  await page.waitForFunction(() => !document.querySelector("#send").disabled);
+  await page.fill("#message-input", "reject");
+  await page.press("#message-input", "Enter");
+  await page.waitForFunction(() => document.querySelector("#notice").textContent.includes("未确认发送"));
+  assert.equal(await page.inputValue("#message-input"), "reject");
+  await bridge.close();
+  await page.waitForFunction(() => document.querySelector("#session-state").textContent === "离线");
+  const functional3 = await measure();
+  for (let i = 3; i < 15; i++) {
+    const path = join(directory, "project-" + i); await mkdir(path); await api("projects", { root: path });
+  }
+  await page.waitForFunction(() => document.querySelectorAll(".project").length === 15);
+  const metadata15 = await measure();
+  for (let i = 0; i < 12; i++) {
+    await page.locator(".project").nth(1).click();
+    await page.waitForFunction(() => document.querySelector("#document").textContent === "尚无回复");
+    await page.locator(".project").first().click();
+    await page.selectOption("#sessions", "a");
+    await page.selectOption("#rounds", "r1");
+    await page.waitForFunction(() => document.querySelector("#document h1")?.textContent === "本轮完成");
+  }
+  const after15 = await measure();
+  const cpuBefore = (await browserCDP.send("SystemInfo.getProcessInfo")).processInfo.filter(p => p.type === "renderer").reduce((n, p) => n + p.cpuTime, 0);
+  await new Promise(r => setTimeout(r, 2000));
+  const cpuAfter = (await browserCDP.send("SystemInfo.getProcessInfo")).processInfo.filter(p => p.type === "renderer").reduce((n, p) => n + p.cpuTime, 0);
+  await writeFile("test-results/performance.json", JSON.stringify({ browser: browser.version(), baseline3, functional3, metadata15, after15, idleRendererCPUPercent: (cpuAfter - cpuBefore) / 2 * 100, note: "targetPrivateFootprintBytes is Chrome memory-infra process private footprint, matched to this page by a user-timing mark. allRendererRSSBytes includes spare/WebUI renderers. The service here shares a process with the fixture driver." }, null, 2));
   await page.screenshot({ path: "test-results/review.png", fullPage: true });
   assert.deepEqual(errors, []);
   console.log(JSON.stringify({ passed: ["same round diff/reply", "math", "Mermaid", "function plot", "3 projects", "session isolation", "paused history", "40px fold", "manual save", "conflict keeps draft", "navigation protects draft", "foreground-only watchers"], directory }));
@@ -131,4 +241,4 @@ try {
   console.error({ errors, document: await page.locator("#document").textContent() });
   await page.screenshot({ path: "test-results/failure.png", fullPage: true });
   throw error;
-} finally { await browser.close(); await service.close(); }
+} finally { await browser.close(); await bridge.close(); await service.close(); }

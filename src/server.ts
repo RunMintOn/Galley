@@ -11,11 +11,15 @@ import { bearerToken, hasServiceHost, isCrossOrigin } from "./service-protocol.m
 import { createReplyUrl, parseReplyReference, readReply } from "./session-reply.mjs";
 import { tree, readText, saveText, projectPath, ignored } from "./files.ts";
 import { gitQuery } from "./git.ts";
+import { BUILD } from "./build.ts";
 
 export const APP = "pi-review-console";
 export const PROTOCOL = 1;
 const errorText = (e: unknown) => e instanceof Error ? e.message : String(e);
-const same = (a: string, b: string) => a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
+const same = (a: string, b: string) => {
+  const left = Buffer.from(a), right = Buffer.from(b);
+  return left.length === right.length && timingSafeEqual(left, right);
+};
 export async function jsonBody(request: IncomingMessage) {
   if (request.headers["content-type"]?.split(";")[0] !== "application/json") throw new ConsoleError("Expected JSON", 415);
   const chunks: Buffer[] = [];
@@ -105,12 +109,21 @@ export async function startConsole(options: { directory: string; port?: number; 
     if (!hasServiceHost(request, port) || isCrossOrigin(request, origin)) { json(response, { error: "Forbidden" }, 403); return; }
     try {
       const url = new URL(request.url || "/", origin);
-      if (url.pathname === "/health") { json(response, { app: APP, protocol: PROTOCOL }); return; }
+      if (url.pathname === "/health") { json(response, { app: APP, protocol: PROTOCOL, build: BUILD }); return; }
       if (url.pathname.startsWith("/api/")) {
         if (!same(bearerToken(request), token)) throw new ConsoleError("未认证", 403);
         if (url.pathname === "/api/auth" && request.method === "POST") {
           response.setHeader("Set-Cookie", `review=${token}; HttpOnly; SameSite=Strict; Path=/`);
           json(response, {}); return;
+        }
+        if (url.pathname === "/api/shutdown" && request.method === "POST") {
+          json(response, {});
+          setImmediate(async () => {
+            bridges.forEach(b => b.controller.abort());
+            peers.forEach(p => { stopWatch(p); p.terminate(); });
+            socketServer.close(); server.close(); server.closeAllConnections();
+          });
+          return;
         }
         if (url.pathname === "/api/metrics" && request.method === "GET") {
           json(response, { watchers: [...watchers.values()].reduce((n, w) => n + w.handles.length, 0), rss: process.memoryUsage().rss }); return;
@@ -130,7 +143,7 @@ export async function startConsole(options: { directory: string; port?: number; 
         if (url.pathname === "/api/projects" && request.method === "GET") { json(response, { projects: store.projects, sessions: store.sessions }); return; }
         if (url.pathname === "/api/projects" && request.method === "POST") {
           const body = await jsonBody(request);
-          await store.addProject(body.root); notify("state"); json(response, {}); return;
+          const root = await store.addProject(body.root); notify("state"); json(response, { root }); return;
         }
         if (url.pathname === "/api/projects" && request.method === "DELETE") {
           const body = await jsonBody(request);
@@ -220,6 +233,7 @@ export async function startConsole(options: { directory: string; port?: number; 
           watchers.set(peer, active);
           const paths = Array.isArray(message.paths) ? message.paths.slice(0, 64) : [""];
           for (const path of new Set<string>(paths)) {
+            if (typeof path !== "string" || path.split(/[\\/]/).some(segment => ignored.has(segment))) continue;
             const actual = await projectPath(store, message.root, path);
             if (watchers.get(peer) !== active) return;
             const handle = watch(actual, (_type, file) => {
@@ -256,7 +270,15 @@ if (process.argv[1]) {
   if (fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
     const directory = process.env.REVIEW_CONSOLE_STATE || join(process.env.PI_CODING_AGENT_DIR || join(process.env.HOME || "", ".pi/agent"), "review-console");
     await mkdir(directory, { recursive: true, mode: 0o700 });
-    const service = await startConsole({ directory, port: Number(process.env.REVIEW_CONSOLE_PORT || 0), token: process.env.REVIEW_CONSOLE_TOKEN });
+    let previous: { origin?: string; token?: string } = {};
+    try { previous = JSON.parse(await readFile(join(directory, "service.json"), "utf8")); } catch { /* First start. */ }
+    const preferredPort = Number(process.env.REVIEW_CONSOLE_PORT || (previous.origin ? new URL(previous.origin).port : 0));
+    let service;
+    try { service = await startConsole({ directory, port: preferredPort, token: process.env.REVIEW_CONSOLE_TOKEN || previous.token }); }
+    catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== "EADDRINUSE") throw e;
+      service = await startConsole({ directory, token: process.env.REVIEW_CONSOLE_TOKEN || previous.token });
+    }
     await writeFile(join(directory, "service.json"), JSON.stringify({ origin: service.origin, token: service.token, pid: process.pid }), { mode: 0o600 });
     console.log(`${service.origin}/#token=${service.token}`);
   }

@@ -41,5 +41,17 @@ test("history diffs use commit parents and historical files never use the workin
     assert.match((await api("git/blame?" + query + "&hash=" + first + "&path=note.md")).body.text, /first/);
     assert.equal((await api("git/file?" + query + "&hash=--help&path=note.md")).status, 400);
     assert.equal(git("diff", "--", "note.md").includes("+uncommitted"), true);
+    await writeFile(join(root, "note.md"), "second\n");
+    git("checkout", "-b", "feature", first);
+    await writeFile(join(root, "side.md"), "side\n"); git("add", ".");
+    git("-c", "user.name=Test", "-c", "user.email=test@example.test", "commit", "-m", "side");
+    const side = git("rev-parse", "HEAD");
+    git("checkout", "main");
+    git("-c", "user.name=Test", "-c", "user.email=test@example.test", "merge", "--no-ff", "feature", "-m", "merge");
+    const merged = git("rev-parse", "HEAD");
+    const merge = await api("git/commit?" + query + "&hash=" + merged);
+    assert.deepEqual(merge.body.parents, [second, side]);
+    assert.equal(merge.body.parent, second);
+    assert.equal((await api("git/commit?" + query + "&hash=" + merged + "&parent=1")).body.parent, side);
   } finally { await service.close(); }
 });

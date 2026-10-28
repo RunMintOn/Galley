@@ -1,10 +1,20 @@
 import { createHash } from "node:crypto";
-import { open, opendir, realpath, stat } from "node:fs/promises";
+import { open, opendir, realpath, stat, type FileHandle } from "node:fs/promises";
 import { isAbsolute, relative, resolve, sep } from "node:path";
 import { ConsoleError, type Store } from "./store.ts";
 
 const EDIT_LIMIT = 2 * 1024 * 1024;
 const PAGE_BYTES = 256 * 1024;
+async function boundedRead(handle: FileHandle, length: number, position: number) {
+  const buffer = Buffer.alloc(length);
+  let total = 0;
+  while (total < length) {
+    const { bytesRead } = await handle.read(buffer, total, length - total, position + total);
+    if (!bytesRead) break;
+    total += bytesRead;
+  }
+  return buffer.subarray(0, total);
+}
 export const ignored = new Set([".git", "node_modules", "dist", "build", ".cache", ".next"]);
 export const inside = (root: string, path: string) => {
   const local = relative(root, path);
@@ -36,15 +46,14 @@ export async function tree(store: Store, root: string, path: string) {
 const versionOf = (content: Buffer) => createHash("sha256").update(content).digest("hex");
 export async function readText(store: Store, root: string, path: string, offset = 0) {
   const actual = await projectPath(store, root, path);
+  if (!(await stat(actual)).isFile()) throw new ConsoleError("不是普通文件");
   const handle = await open(actual, "r");
   try {
     const info = await handle.stat();
     if (!info.isFile()) throw new ConsoleError("不是普通文件");
     const partial = info.size > EDIT_LIMIT;
     if (!Number.isSafeInteger(offset) || offset < 0 || offset > info.size || (!partial && offset)) throw new ConsoleError("读取位置无效");
-    const buffer = Buffer.alloc(Math.min(partial ? PAGE_BYTES : EDIT_LIMIT + 1, info.size - offset));
-    const { bytesRead } = await handle.read(buffer, 0, buffer.length, offset);
-    let data = buffer.subarray(0, bytesRead);
+    let data = await boundedRead(handle, Math.min(partial ? PAGE_BYTES : EDIT_LIMIT + 1, info.size - offset), offset);
     if (data.includes(0)) throw new ConsoleError("二进制文件不提供文本视图", 415);
     if (partial && offset + data.length < info.size) {
       const newline = data.lastIndexOf(10);
@@ -76,11 +85,17 @@ export async function saveText(store: Store, body: { root: string; path: string;
     try {
       const info = await handle.stat();
       if (!info.isFile() || info.size > EDIT_LIMIT) throw new ConsoleError("文件不可编辑", 413);
-      const before = await handle.readFile();
+      const before = await boundedRead(handle, info.size + 1, 0);
+      if (before.length !== info.size) throw new ConsoleError("磁盘文件已变化；草稿保留，请重新载入", 409);
       if (versionOf(before) !== body.version) throw new ConsoleError("磁盘文件已变化；草稿保留，请重新载入或确认覆盖", 409);
       const content = Buffer.from(body.content);
       // The descriptor keeps a replaced path from redirecting the write to a new symlink.
-      await handle.write(content, 0, content.length, 0);
+      let written = 0;
+      while (written < content.length) {
+        const { bytesWritten } = await handle.write(content, written, content.length - written, written);
+        if (!bytesWritten) throw new ConsoleError("文件写入未完成", 500);
+        written += bytesWritten;
+      }
       await handle.truncate(content.length);
       return { version: versionOf(content) };
     } finally { await handle.close(); }

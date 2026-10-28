@@ -4,7 +4,7 @@ import { createFileEditor } from "./editor.js";
 export async function showGitHistory(container, { root, api, onOpenCurrent, onError }) {
   const pane = document.createElement("div"); pane.className = "git-view";
   container.replaceChildren(pane);
-  let selectedHash = "", skip = 0, historicalEditor, version = 0;
+  let selectedHash = "", skip = 0, historicalEditor, diff, version = 0;
   const query = values => new URLSearchParams({ root, ...values });
   const call = (op, values = {}) => api("git/" + op + "?" + query(values));
   const button = (text, action) => {
@@ -21,6 +21,7 @@ export async function showGitHistory(container, { root, api, onOpenCurrent, onEr
   const active = () => pane.isConnected;
   async function list() {
     const request = ++version;
+    diff?.destroy(); diff = undefined;
     historicalEditor?.destroy(); historicalEditor = undefined;
     const data = await call("log", { skip: String(skip), ...(selectedHash ? { hash: selectedHash } : {}) });
     if (!active() || request !== version) return;
@@ -37,6 +38,7 @@ export async function showGitHistory(container, { root, api, onOpenCurrent, onEr
   }
   async function details(hash, parent = 0) {
     const request = ++version;
+    diff?.destroy(); diff = undefined;
     historicalEditor?.destroy(); historicalEditor = undefined;
     const data = await call("commit", { hash, parent: String(parent) });
     if (!active() || request !== version) return;
@@ -54,9 +56,10 @@ export async function showGitHistory(container, { root, api, onOpenCurrent, onEr
     const files = document.createElement("div"); files.className = "git-files";
     const view = document.createElement("div");
     for (const file of data.files) files.append(button(`${file.path} +${file.added} −${file.deleted}`, () => {
+      diff?.destroy();
       historicalEditor?.destroy(); historicalEditor = undefined;
-      const diff = document.createElement("div"); diff.className = "diff-surface"; view.replaceChildren(diff);
-      mountDiff(diff, file, () => historical(file.path, file.status === "Deleted" ? data.parent : hash, view));
+      const surface = document.createElement("div"); surface.className = "diff-surface"; view.replaceChildren(surface);
+      diff = mountDiff(surface, file, () => historical(file.path, file.status === "Deleted" ? data.parent : hash, view));
     }));
     body.append(bar, files, view);
     if (data.truncated) { const warning = document.createElement("p"); warning.textContent = "提交包含过多文件，仅加载前 500 个"; body.append(warning); }
@@ -66,6 +69,7 @@ export async function showGitHistory(container, { root, api, onOpenCurrent, onEr
     const request = ++version;
     const file = await call("file", { hash, path });
     if (!active() || request !== version) return;
+    diff?.destroy(); diff = undefined;
     historicalEditor?.destroy();
     const holder = document.createElement("div"); holder.className = "historical-file";
     const bar = document.createElement("div"); bar.className = "file-toolbar";
@@ -89,5 +93,5 @@ export async function showGitHistory(container, { root, api, onOpenCurrent, onEr
   } catch (e) {
     if (active()) { body.textContent = "Git 历史不可用：" + e.message; }
   }
-  return () => historicalEditor?.destroy();
+  return () => { historicalEditor?.destroy(); diff?.destroy(); };
 }

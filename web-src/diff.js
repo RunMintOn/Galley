@@ -163,9 +163,13 @@ export function mountDiff(root, file, onOpen) {
     }
   });
   root.querySelector("[data-wrap]").onchange=e=>diffs.classList.toggle("nowrap",!e.target.checked);
+  const fit = () => { root.querySelector('[data-layout="split"]').disabled = root.clientWidth < 720; };
+  const observer = new ResizeObserver(fit);
+  observer.observe(root); fit();
   render();
   return {
     nav,
+    destroy() { observer.disconnect(); },
     goToLine(line) {
       const row = [...diffs.querySelectorAll("tr")].find(r => Number(r.querySelectorAll(".ln")[1]?.textContent) === line);
       row?.scrollIntoView({ block: "center" });

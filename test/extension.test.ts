@@ -53,8 +53,18 @@ test("the real pi loader captures edit/write/patch before mutation and publishes
     assert.deepEqual(round.report.files.map((f: { path: string }) => f.path), ["a.md", "b.md", "c.md"]);
     assert.equal(round.report.added, 3);
     assert.equal(round.report.deleted, 1);
-    assert.deepEqual(notifications, []);
+    assert.equal(notifications.length, 0);
+    await emit("agent_start");
+    (globalThis as Record<symbol, unknown>)[Symbol.for("pi-compact-tool.style-selection.v1")] = { style: "aggregate" };
+    await emit("tool_execution_start", { toolName: "write", args: { path: "a.md" } });
+    await writeFile(join(root, "a.md"), "legacy now owns capture\n");
+    await emit("agent_before_settle", { outcome: "completed" });
+    await emit("agent_settled", { aborted: false });
+    const updated = await (await fetch(service.origin + "/api/projects", { headers })).json();
+    assert.equal(updated.sessions[0].rounds.at(-1).count, 0);
+    assert.ok(notifications.some(text => text.includes("停止捕获")));
   } finally {
+    delete (globalThis as Record<symbol, unknown>)[Symbol.for("pi-compact-tool.style-selection.v1")];
     await emit("session_shutdown");
     await service.close();
     if (oldState === undefined) delete process.env.REVIEW_CONSOLE_STATE; else process.env.REVIEW_CONSOLE_STATE = oldState;

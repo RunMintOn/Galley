@@ -1,0 +1,44 @@
+import { mkdtemp, symlink, readFile, writeFile, mkdir } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, resolve, dirname } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import assert from "node:assert/strict";
+import { startConsole } from "../src/server.ts";
+
+const original = process.argv[2] || process.env.COMPACT_TOOL_SOURCE;
+if (!original) throw new Error("传入 compact-tool 原目录：npm run verify:migration -- /path/to/compact-tool");
+const directory = await mkdtemp(join(tmpdir(), "review-migration-"));
+const root = join(directory, "project"); await mkdir(root);
+const compact = join(directory, "compact"); await mkdir(compact);
+await symlink(resolve(original, "src"), join(compact, "src"));
+await writeFile(join(compact, "index.ts"), await readFile("migration/compact-tool-display-only/index.ts"));
+const service = await startConsole({ directory, token: "migration-test" });
+await writeFile(join(directory, "service.json"), JSON.stringify({ ...service, pid: process.pid }));
+process.env.REVIEW_CONSOLE_STATE = directory;
+const piRoot = dirname(fileURLToPath(import.meta.resolve("@earendil-works/pi-coding-agent")));
+const { loadExtensions } = await import(pathToFileURL(join(piRoot, "core/extensions/loader.js")).href);
+const { SessionManager } = await import("@earendil-works/pi-coding-agent");
+let emit;
+try {
+  const loaded = await loadExtensions([join(compact, "index.ts"), resolve("src/extension.ts")], root);
+  assert.deepEqual(loaded.errors, []);
+  const manager = SessionManager.create(root, join(directory, "sessions"));
+  const notices = [];
+  loaded.runtime.appendEntry = (type, data) => manager.appendCustomEntry(type, data);
+  const ctx = { cwd: root, mode: "tui", hasUI: false, sessionManager: manager, isIdle: () => true, ui: { notify: text => notices.push(text) } };
+  emit = async (type, event = {}) => { for (const extension of loaded.extensions) for (const handler of extension.handlers.get(type) || []) await handler(event, ctx); };
+  manager.appendMessage({ role: "user", content: "change", timestamp: Date.now() });
+  await emit("session_start");
+  await emit("agent_start");
+  await emit("tool_execution_start", { toolName: "write", args: { path: "new.md" } });
+  await writeFile(join(root, "new.md"), "new\n");
+  await emit("agent_before_settle", { outcome: "completed" });
+  await emit("agent_settled", { aborted: false });
+  assert.equal(loaded.extensions[0].commands.has("changes"), false);
+  assert.equal(loaded.extensions[0].commands.has("tools"), true);
+  assert.ok(!notices.some(n => n.includes("重复捕获")));
+  const data = await (await fetch(service.origin + "/api/projects", { headers: { Authorization: "Bearer migration-test" } })).json();
+  assert.equal(data.sessions[0].rounds[0].count, 1);
+  assert.ok(!manager.getEntries().some(e => e.type === "custom" && e.customType === "compact-tool.changes.v1"));
+  console.log(JSON.stringify({ displayOnlyOverlayLoaded: true, captureOwnedByConsole: true, directory }));
+} finally { await emit?.("session_shutdown"); await service.close(); }

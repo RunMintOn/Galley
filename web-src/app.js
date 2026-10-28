@@ -15,12 +15,17 @@ let diff;
 const positions = new Map();
 let renderTimer;
 let editor, currentFile;
+let savingFile = false;
 let disposeHistory;
 let socket;
+let reconnectTimer, stopped = false, inputSession = "", sending = false, pasted = false;
+const drafts = new Map();
 let foreground = document.visibilityState === "visible" && document.hasFocus();
 const expanded = new Set([""]);
 function leaveFile() {
+  if (savingFile) { notice("正在保存，请等待确认后再切换"); return false; }
   if (editor?.dirty && !confirm("存在未保存修改。放弃这些修改并切换？")) return false;
+  diff?.destroy(); diff = undefined;
   editor?.destroy(); editor = undefined; currentFile = undefined; return true;
 }
 function closeHistory() { disposeHistory?.(); disposeHistory = undefined; }
@@ -59,16 +64,22 @@ async function refresh() {
   const previousLatest = session()?.rounds.at(-1)?.id;
   const data = await api("projects");
   state.projects = data.projects; state.sessions = data.sessions;
-  if (!state.projects.some(p => p.root === state.root)) state.root = state.projects[0]?.root || "";
+  if (!state.projects.some(p => p.root === state.root)) state.root = state.sessions.find(s => s.id === state.session)?.root || state.projects[0]?.root || "";
   if (!state.sessions.some(s => s.id === state.session && s.root === state.root)) state.session = state.sessions.filter(s => s.root === state.root).at(-1)?.id || "";
   const selected = session();
   const latest = selected?.rounds.at(-1)?.id || "";
-  const wasFollowing = !editor && (!state.round || state.round === previousLatest);
+  const wasFollowing = !editor && !pasted && (!state.round || state.round === previousLatest);
   if (wasFollowing) state.round = latest;
   renderProjects();
   $("sessions").replaceChildren(...state.sessions.filter(s => s.root === state.root).map(s => option(s.id, s.title)));
   $("sessions").value = state.session;
   $("session-state").textContent = { offline: "离线", idle: "空闲", working: "工作中" }[selected?.state] || "无会话";
+  if (inputSession !== state.session) {
+    if (inputSession) drafts.set(inputSession, $("message-input").value);
+    inputSession = state.session; $("message-input").value = drafts.get(inputSession) || "";
+  }
+  $("send").disabled = sending || selected?.state !== "idle";
+  $("send-state").textContent = sending ? "发送中，等待 pi 确认…" : selected?.error || (selected?.state === "offline" ? "会话离线；可以写草稿" : "");
   $("rounds").replaceChildren(...(selected?.rounds || []).map((r, i) => option(r.id, `${i + 1} · ${new Date(r.end).toLocaleTimeString()} · ${r.outcome}`)));
   $("rounds").value = state.round;
   $("latest").textContent = state.round === latest ? "最新" : "新结果 · 回到最新";
@@ -84,8 +95,10 @@ async function chooseProject(root) {
 export function savePosition() {
   if (state.data) positions.set(state.data.sessionId + ":" + state.data.id, $("document").parentElement.scrollTop);
 }
+export function hasUnsavedChanges() { return !!editor?.dirty; }
 export async function focusSession(hash) {
   if (!leaveFile()) return;
+  closeHistory(); state.mode = "turn";
   const target = new URLSearchParams(hash.slice(1));
   state.session = target.get("session") || state.session;
   state.root = state.sessions.find(s => s.id === state.session)?.root || target.get("root") || state.root;
@@ -94,13 +107,16 @@ export async function focusSession(hash) {
 $("add-project").onclick = run(async () => {
   const root = prompt("本地项目的完整目录路径");
   if (!root) return;
-  await api("projects", { root }); await refresh();
-  const project = state.projects.find(p => p.root === root || p.root.endsWith(root));
-  if (project) await chooseProject(project.root);
+  const added = await api("projects", { root }); await refresh();
+  await chooseProject(added.root);
 });
 $("remove-project").onclick = run(async () => {
   if (!state.root || !confirm("从审查台移除此项目？不会删除磁盘文件。")) return;
-  await api("projects", { root: state.root }, "DELETE"); await refresh();
+  if (!leaveFile()) return;
+  closeHistory();
+  await api("projects", { root: state.root }, "DELETE");
+  state.round = ""; state.data = null; state.mode = "turn";
+  await refresh(); await loadTree(); updateWatch();
 });
 $("move-project").onclick = run(async () => {
   const roots = state.projects.map(p => p.root); const at = roots.indexOf(state.root);
@@ -115,6 +131,7 @@ async function loadRound() {
   renderer.destroy();
   state.data = null;
   $("changed").replaceChildren();
+  $("file-count").textContent = "0";
   if (state.mode === "turn") $("content").replaceChildren();
   $("reply-source").value = "";
   if (!state.session || !state.round) {
@@ -125,6 +142,8 @@ async function loadRound() {
   const data = await api(`round?session=${encodeURIComponent(state.session)}&id=${encodeURIComponent(state.round)}`);
   if (current !== generation) return;
   state.data = data;
+  pasted = false;
+  $("show-source").textContent = "源码";
   $("reply-source").value = data.reply;
   renderer.render(data.reply || data.replyError || "本轮没有最终回复");
   $("document").parentElement.scrollTop = positions.get(data.sessionId + ":" + data.id) || 0;
@@ -144,6 +163,16 @@ function showDiff(file) {
   const root = document.createElement("div"); root.className = "diff-surface";
   $("content").replaceChildren(root);
   diff = mountDiff(root, file, path => openFile(path));
+  if (state.data?.report) {
+    const report = state.data.report;
+    const context = document.createElement("details");
+    const summary = document.createElement("summary"); summary.textContent = `本轮请求 · ${new Date(report.start).toLocaleString()}`;
+    const prompts = document.createElement("pre"); prompts.textContent = report.prompts.join("\n\n") || "用户消息未捕获";
+    context.append(summary, prompts); context.className = "round-prompts"; root.prepend(context);
+    const coverage = document.createElement("p"); coverage.className = "coverage";
+    coverage.textContent = "已捕获 Edit / Write / apply_patch 的净改动；命令和外部写入不在报告范围内。";
+    root.append(coverage);
+  }
   if (state.data?.report?.incomplete || state.data?.outcome !== "completed") {
     const warning = document.createElement("p"); warning.className = "notice";
     warning.textContent = "本轮中断、失败或报告不完整；只显示已捕获部分"; root.prepend(warning);
@@ -179,21 +208,22 @@ async function openFile(path, line = 1, offset = 0) {
   updateWatch();
 }
 async function saveFile() {
-  if (!editor?.dirty || !currentFile) return;
+  if (!editor?.dirty || !currentFile || savingFile) return;
+  savingFile = true;
   const draft = editor.text, target = currentFile, activeEditor = editor;
   try {
     const result = await api("file", { root: target.root, path: target.path, content: draft, version: target.version }, "PUT");
     target.version = result.version;
     // A new edit during the request remains dirty rather than being marked saved.
-    if (editor === activeEditor && editor.text === draft) editor.markSaved();
+    if (editor === activeEditor) editor.markSaved(draft);
     notice("已保存");
   } catch (e) {
     notice(e.message);
     if (e.message.includes("磁盘文件已变化") && confirm("磁盘文件已被修改。是否明确覆盖当前磁盘版本？取消则保留草稿。")) {
       const fresh = await api(`file?root=${encodeURIComponent(target.root)}&path=${encodeURIComponent(target.path)}`);
-      target.version = fresh.version; await saveFile();
+      target.version = fresh.version; savingFile = false; await saveFile();
     }
-  }
+  } finally { savingFile = false; await recheckFile(); }
 }
 async function loadTree() {
   const root = state.root;
@@ -211,9 +241,13 @@ async function loadTree() {
         const children = document.createElement("div"); details.append(summary, children);
         details.ontoggle = run(async () => {
           if (details.open) { expanded.add(file); await load(file, children); }
-          else { expanded.delete(file); children.replaceChildren(); }
+          else {
+            for (const entry of expanded) if (entry === file || entry.startsWith(file + "/")) expanded.delete(entry);
+            children.replaceChildren();
+          }
           updateWatch();
         });
+        details.open = expanded.has(file);
         parent.append(details);
       } else parent.append(button(item.name + (item.link ? " ↗" : ""), () => openFile(file), "file-button"));
     }
@@ -228,7 +262,7 @@ function updateWatch() {
   socket.send(JSON.stringify({ type: "watch", root: foreground ? state.root : null, paths: [...paths] }));
 }
 async function recheckFile() {
-  if (!foreground || !currentFile || currentFile.partial) return;
+  if (!foreground || !currentFile || currentFile.partial || savingFile) return;
   const target = currentFile;
   const fresh = await api(`file?root=${encodeURIComponent(target.root)}&path=${encodeURIComponent(target.path)}`);
   if (currentFile !== target || fresh.version === target.version) return;
@@ -247,10 +281,11 @@ $("history-tab").onclick = run(async () => {
   closeHistory(); generation++; state.mode = "history";
   disposeHistory = await showGitHistory($("content"), { root: state.root, api, onOpenCurrent: path => openFile(path), onError: e => notice(e.message) });
 });
-$("show-source").onclick = () => {
+function toggleSource() {
   $("reply-source").hidden = !$("reply-source").hidden;
   $("show-source").setAttribute("aria-expanded", String(!$("reply-source").hidden));
-};
+}
+$("show-source").onclick = toggleSource;
 $("reply-source").oninput = () => { clearTimeout(renderTimer); renderTimer = setTimeout(() => renderer.render($("reply-source").value), 200); };
 $("theme").onclick = () => {
   const dark = document.documentElement.classList.toggle("dark");
@@ -266,12 +301,54 @@ document.querySelectorAll("[data-collapse]").forEach(b => b.onclick = () => {
 });
 document.addEventListener("keydown", run(async e => {
   if (e.defaultPrevented) return;
+  if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && e.target.id !== "message-input") { e.preventDefault(); toggleSource(); return; }
   const typing = e.target.closest("input,textarea,select,[contenteditable=true]");
-  if ((e.metaKey || e.ctrlKey) && e.key === "s") { if (editor) { e.preventDefault(); await saveFile(); } return; }
+  if ((e.metaKey || e.ctrlKey) && e.key === "s") {
+    if (editor && (!typing || e.target.closest(".editor-host"))) { e.preventDefault(); await saveFile(); }
+    return;
+  }
   if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.key === "ArrowLeft") { e.preventDefault(); $("previous").click(); return; }
+  if (e.key === "ArrowRight") { e.preventDefault(); $("next").click(); return; }
   if (e.key === "e" && editor && !editor.editable) { e.preventDefault(); editor.enable(); }
   if (state.mode === "turn" && ["j","n","k","p"].includes(e.key)) { e.preventDefault(); diff?.nav(["j","n"].includes(e.key) ? 1 : -1); }
 }));
+document.addEventListener("paste", e => {
+  if (e.target.closest("input,textarea,select,[contenteditable=true]")) return;
+  const text = e.clipboardData?.getData("text/plain");
+  if (!text) return;
+  e.preventDefault(); pasted = true;
+  $("show-source").textContent = "临时预览源码";
+  $("reply-source").value = text; renderer.render(text);
+  notice("临时预览，不属于当前轮次；选择轮次可返回");
+});
+$("toggle-input").onclick = () => {
+  $("input-area").hidden = !$("input-area").hidden;
+  if (!$("input-area").hidden) $("message-input").focus();
+};
+$("message-input").oninput = () => drafts.set(inputSession, $("message-input").value);
+async function sendMessage() {
+  const target = session(), text = $("message-input").value;
+  if (!target || sending || target.state !== "idle" || !text.trim()) return;
+  sending = true; $("send").disabled = true; $("send-state").textContent = "发送中，等待 pi 确认…";
+  try {
+    await api("input", { sessionId: target.id, text });
+    const currentDraft = target.id === inputSession ? $("message-input").value : drafts.get(target.id);
+    if (currentDraft === text) {
+      drafts.delete(target.id);
+      if (inputSession === target.id) $("message-input").value = "";
+    }
+    notice("pi 已确认收到消息");
+    await refresh();
+    if (state.session === target.id && !editor?.dirty) await chooseRound(session()?.rounds.at(-1)?.id || "");
+  } catch (e) { notice("未确认发送；草稿保留。检查终端后再决定是否重发。\n" + e.message); }
+  finally { sending = false; await refresh(); }
+}
+$("send").onclick = run(sendMessage);
+$("message-input").onkeydown = run(async e => {
+  if (e.key !== "Enter" || e.shiftKey || e.isComposing || e.keyCode === 229) return;
+  e.preventDefault(); await sendMessage();
+});
 window.addEventListener("beforeunload", e => { if (editor?.dirty) { e.preventDefault(); e.returnValue = ""; } });
 window.addEventListener("blur", () => { foreground = false; updateWatch(); });
 window.addEventListener("focus", run(async () => { foreground = document.visibilityState === "visible"; updateWatch(); await recheckFile(); }));
@@ -291,17 +368,31 @@ $("document").addEventListener("click", run(async e => {
   }
   else await openFile(path, line);
 }));
-run(async () => {
-  await api("auth", {});
-  await refresh(); await loadTree();
+function connectEvents() {
+  if (stopped) return;
   socket = new WebSocket(location.origin.replace("http", "ws") + "/events");
   socket.onopen = updateWatch;
   socket.onmessage = run(async e => {
     const event = JSON.parse(e.data);
-    if (event.type === "focus") { if (!leaveFile()) return; state.root = event.data.root; state.session = event.data.sessionId; state.round = ""; }
-    if (event.type === "files") { await recheckFile(); return; }
+    if (event.type === "focus") {
+      await focusSession("#" + new URLSearchParams({ root: event.data.root, session: event.data.sessionId }));
+      return;
+    }
+    if (event.type === "files") { await recheckFile(); await loadTree(); return; }
     if (event.type === "watch-error") { notice(event.data); return; }
     await refresh();
   });
-  socket.onclose = () => notice("连接已断开，刷新页面重新连接");
+  socket.onclose = () => {
+    if (stopped) return;
+    notice("连接已断开，正在重连；草稿保留");
+    reconnectTimer = setTimeout(run(async () => { await api("auth", {}); connectEvents(); }), 2000);
+  };
+}
+window.addEventListener("pagehide", () => { stopped = true; clearTimeout(reconnectTimer); socket?.close(); });
+window.addEventListener("review-console-replaced", () => {
+  stopped = true; clearTimeout(reconnectTimer); socket?.close(); renderer.destroy(); editor?.destroy(); closeHistory();
+});
+run(async () => {
+  await api("auth", {});
+  await refresh(); await loadTree(); connectEvents();
 })();
