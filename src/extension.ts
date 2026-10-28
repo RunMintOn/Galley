@@ -14,7 +14,7 @@ export default function reviewConsole(pi: ExtensionAPI) {
   const changes = new ChangeTracker();
   let service: Service | undefined;
   let input: Awaited<ReturnType<typeof startSessionInput>> | undefined;
-  let round: { id: string; reply?: string; outcome: ChangeOutcome; notice?: string } | undefined;
+  let round: { id: string; reply?: string; outcome: ChangeOutcome } | undefined;
   let capture = false;
   const post = async (path: string, body: unknown) => {
     if (!service) throw new Error("本地服务不可用");

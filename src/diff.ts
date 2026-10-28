@@ -73,4 +73,3 @@ export function diffFile(path: string, before: string, after: string, contextLin
   }
   return { path, blocks, addedLines, deletedLines };
 }
-

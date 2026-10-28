@@ -146,4 +146,3 @@ export class ChangeTracker {
   }
   reset(): void { this.current = undefined; }
 }
-

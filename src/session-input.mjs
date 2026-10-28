@@ -141,4 +141,3 @@ export async function startSessionInput({ isIdle, send }) {
     },
   };
 }
-

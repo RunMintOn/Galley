@@ -163,7 +163,7 @@
        // Non-context custom data makes observed parallel/serial dispatch and wall time
        // survive reload without adding model-visible messages or altering tool results.
        pi.appendEntry(ACTIVITY_ENTRY, timing);
-@@ -191,9 +123,10 @@
+@@ -191,9 +123,9 @@
    });
    pi.on("session_tree", (_event, ctx) => rebuild(ctx));
    pi.on("session_compact", (_event, ctx) => rebuild(ctx));
@@ -174,5 +174,4 @@
      resetDisplayState();
    });
  }
-+
 

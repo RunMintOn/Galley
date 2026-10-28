@@ -29,4 +29,3 @@ export function bearerToken(request) {
   const header = request.headers.authorization || "";
   return header.startsWith("Bearer ") ? header.slice(7) : "";
 }
-

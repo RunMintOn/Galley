@@ -30,4 +30,3 @@ export function patchOperations(patch: string): PatchOperation[] {
   }
   return operations;
 }
-

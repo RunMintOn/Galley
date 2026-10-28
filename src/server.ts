@@ -42,7 +42,7 @@ export async function startConsole(options: { directory: string; port?: number; 
   await store.load();
   const web = options.web || fileURLToPath(new URL("./web/", import.meta.url));
   const peers = new Set<WebSocket>();
-  const watchers = new Map<WebSocket, { handles: FSWatcher[]; timer?: NodeJS.Timeout; generation: number }>();
+  const watchers = new Map<WebSocket, { handles: FSWatcher[]; timer?: NodeJS.Timeout }>();
   function stopWatch(peer: WebSocket) {
     const active = watchers.get(peer);
     active?.handles.forEach(w => w.close());
@@ -229,7 +229,7 @@ export async function startConsole(options: { directory: string; port?: number; 
           if (message.type !== "watch") return;
           stopWatch(peer);
           if (!message.root) return;
-          const active = { handles: [] as FSWatcher[], timer: undefined as NodeJS.Timeout | undefined, generation: 0 };
+          const active = { handles: [] as FSWatcher[], timer: undefined as NodeJS.Timeout | undefined };
           watchers.set(peer, active);
           const paths = Array.isArray(message.paths) ? message.paths.slice(0, 64) : [""];
           for (const path of new Set<string>(paths)) {

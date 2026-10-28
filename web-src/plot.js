@@ -70,4 +70,3 @@ export function mountPlot(container, text, onError) {
   }
   return { destroy };
 }
-

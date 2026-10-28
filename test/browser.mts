@@ -18,7 +18,7 @@ const git = (...args) => execFileSync("git", ["-C", root, ...args], { encoding: 
 git("init", "-b", "main"); git("add", ".");
 git("-c", "user.name=Test", "-c", "user.email=test@example.test", "commit", "-m", "first historical version");
 const historicalHash = git("rev-parse", "HEAD");
-const service = await startConsole({ directory, port: 0, token: "browser-secret", web: resolve("dist/web") });
+let service = await startConsole({ directory, port: 0, token: "browser-secret", web: resolve("dist/web") });
 let idle = true;
 const messages = [];
 const bridge = await startSessionInput({ isIdle: () => idle, send(text) {
@@ -61,7 +61,9 @@ try {
   await page.click('[data-collapse="reply-pane"]');
   await page.waitForFunction(() => !document.querySelector('[data-layout="split"]').disabled);
   await page.click('[data-layout="split"]');
-  assert.equal(await page.locator(".diffs").getAttribute("data-layout"), "split");
+  const oldCell = await page.locator("td.content.delete").first().boundingBox();
+  const newCell = await page.locator("td.content.insert").first().boundingBox();
+  assert.ok(oldCell && newCell && newCell.x > oldCell.x && newCell.y === oldCell.y);
   await page.click('[data-collapse="reply-pane"]');
   await page.click('[data-layout="unified"]');
   const pageCDP = await page.context().newCDPSession(page);
@@ -73,6 +75,7 @@ try {
     const processes = (await browserCDP.send("SystemInfo.getProcessInfo")).processInfo;
     const renderers = processes.filter(p => p.type === "renderer");
     const rss = renderers.reduce((sum, p) => sum + Number(execFileSync("ps", ["-o", "rss=", "-p", String(p.id)], { encoding: "utf8" }).trim() || 0) * 1024, 0);
+    const otherRSS = processes.filter(p => p.type !== "renderer").reduce((sum, p) => sum + Number(execFileSync("ps", ["-o", "rss=", "-p", String(p.id)], { encoding: "utf8" }).trim() || 0) * 1024, 0);
     const trace = [];
     const collected = data => trace.push(...data.value);
     browserCDP.on("Tracing.dataCollected", collected);
@@ -85,7 +88,7 @@ try {
     const targetPID = trace.find(e => e.name === "review-console-memory-target")?.pid;
     const dumps = trace.filter(e => e.args?.dumps?.process_totals).map(e => ({ pid: e.pid, totals: e.args.dumps.process_totals }));
     const target = dumps.find(d => d.pid === targetPID);
-    return { jsHeapBytes: metrics.metrics.find(m => m.name === "JSHeapUsedSize")?.value, allRendererRSSBytes: rss, rendererProcesses: renderers.length, targetPID, targetPrivateFootprintBytes: target?.totals.private_footprint_bytes ? parseInt(target.totals.private_footprint_bytes, 16) : null, service: await api("metrics") };
+    return { jsHeapBytes: metrics.metrics.find(m => m.name === "JSHeapUsedSize")?.value, allRendererRSSBytes: rss, allBrowserProcessRSSBytes: rss + otherRSS, rendererProcesses: renderers.length, targetPID, targetPrivateFootprintBytes: target?.totals.private_footprint_bytes ? parseInt(target.totals.private_footprint_bytes, 16) : null, service: await api("metrics") };
   }
   const baseline3 = await measure();
   assert.equal(await page.locator(".project").count(), 3);
@@ -234,9 +237,18 @@ try {
   await new Promise(r => setTimeout(r, 2000));
   const cpuAfter = (await browserCDP.send("SystemInfo.getProcessInfo")).processInfo.filter(p => p.type === "renderer").reduce((n, p) => n + p.cpuTime, 0);
   await writeFile("test-results/performance.json", JSON.stringify({ browser: browser.version(), baseline3, functional3, metadata15, after15, idleRendererCPUPercent: (cpuAfter - cpuBefore) / 2 * 100, note: "targetPrivateFootprintBytes is Chrome memory-infra process private footprint, matched to this page by a user-timing mark. allRendererRSSBytes includes spare/WebUI renderers. The service here shares a process with the fixture driver." }, null, 2));
+  const port = Number(new URL(service.origin).port);
+  await service.close();
+  await page.waitForTimeout(2600);
+  service = await startConsole({ directory, port, token: "browser-secret", web: resolve("dist/web") });
+  const recoveredProject = join(directory, "after-reconnect"); await mkdir(recoveredProject);
+  await api("projects", { root: recoveredProject });
+  await page.getByRole("button", { name: /after-reconnect/ }).waitFor({ timeout: 7000 });
+  assert.equal((await api("round?session=a&id=r1")).entryId, "answer");
+  assert.equal(await page.inputValue("#message-input"), "reject");
   await page.screenshot({ path: "test-results/review.png", fullPage: true });
   assert.deepEqual(errors, []);
-  console.log(JSON.stringify({ passed: ["same round diff/reply", "math", "Mermaid", "function plot", "3 projects", "session isolation", "paused history", "40px fold", "manual save", "conflict keeps draft", "navigation protects draft", "foreground-only watchers"], directory }));
+  console.log(JSON.stringify({ passed: ["same round diff/reply", "math", "Mermaid", "function plot", "3 projects", "session isolation", "paused history", "40px fold", "manual save", "edits during save stay dirty", "conflict keeps draft", "navigation protects draft", "Git history read-only", "source/paste/theme", "input confirmation and IME", "foreground-only watchers", "reconnect after outage"], directory }));
 } catch (error) {
   console.error({ errors, document: await page.locator("#document").textContent() });
   await page.screenshot({ path: "test-results/failure.png", fullPage: true });

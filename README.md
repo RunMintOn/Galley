@@ -80,6 +80,7 @@ npm start
 npm run check
 npm run test:e2e
 npm run verify:package
+npm run verify:migration -- /path/to/22-pi-compact-tool
 ```
 
 浏览器检查使用独立、无头 Google Chrome，不切换用户桌面焦点。报告与截图保留在 `test-results/`；已记录的验收结果见 `docs/verification.md`。

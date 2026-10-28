@@ -129,4 +129,3 @@ export default function compactToolExtension(pi: ExtensionAPI): void {
     resetDisplayState();
   });
 }
-

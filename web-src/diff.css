@@ -360,4 +360,3 @@ button:disabled:hover { color: var(--dim); background: transparent; }
   * { transition: none !important; }
   button:active, .file-link:active { transform: none; }
 }
-

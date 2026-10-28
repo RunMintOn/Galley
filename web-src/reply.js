@@ -193,4 +193,3 @@ function render(text) {
 
 return {render, destroy(){mounted.forEach(item=>item.destroy());mounted=[];preview.replaceChildren();}};
 }
-

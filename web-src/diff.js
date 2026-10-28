@@ -176,4 +176,3 @@ export function mountDiff(root, file, onOpen) {
     },
   };
 }
-

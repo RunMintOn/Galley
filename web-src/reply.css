@@ -870,7 +870,7 @@ footer {
 .hljs-punctuation,
 .hljs-tag {
   /* purposely ignored */
-  
+
 }
 :root.dark .hljs {
   color: var(--ink)
@@ -967,7 +967,7 @@ footer {
 :root.dark .hljs-punctuation,
 :root.dark .hljs-tag {
   /* purposely ignored */
-  
+
 }
 
 [hidden] { display: none !important; }
@@ -1003,4 +1003,3 @@ footer {
   .mermaid-diagram, .function-plot-block { padding: 16px 12px 12px; }
   .mermaid-diagram { padding-top: 30px; }
 }
-

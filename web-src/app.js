@@ -95,7 +95,7 @@ async function chooseProject(root) {
 export function savePosition() {
   if (state.data) positions.set(state.data.sessionId + ":" + state.data.id, $("document").parentElement.scrollTop);
 }
-export function hasUnsavedChanges() { return !!editor?.dirty; }
+export function hasUnsavedChanges() { return savingFile || !!editor?.dirty; }
 export async function focusSession(hash) {
   if (!leaveFile()) return;
   closeHistory(); state.mode = "turn";
@@ -349,7 +349,7 @@ $("message-input").onkeydown = run(async e => {
   if (e.key !== "Enter" || e.shiftKey || e.isComposing || e.keyCode === 229) return;
   e.preventDefault(); await sendMessage();
 });
-window.addEventListener("beforeunload", e => { if (editor?.dirty) { e.preventDefault(); e.returnValue = ""; } });
+window.addEventListener("beforeunload", e => { if (hasUnsavedChanges()) { e.preventDefault(); e.returnValue = ""; } });
 window.addEventListener("blur", () => { foreground = false; updateWatch(); });
 window.addEventListener("focus", run(async () => { foreground = document.visibilityState === "visible"; updateWatch(); await recheckFile(); }));
 document.addEventListener("visibilitychange", run(async () => { foreground = document.visibilityState === "visible" && document.hasFocus(); updateWatch(); await recheckFile(); }));
@@ -368,6 +368,11 @@ $("document").addEventListener("click", run(async e => {
   }
   else await openFile(path, line);
 }));
+async function reconnect() {
+  if (stopped) return;
+  try { await api("auth", {}); connectEvents(); }
+  catch { reconnectTimer = setTimeout(reconnect, 2000); }
+}
 function connectEvents() {
   if (stopped) return;
   socket = new WebSocket(location.origin.replace("http", "ws") + "/events");
@@ -385,7 +390,7 @@ function connectEvents() {
   socket.onclose = () => {
     if (stopped) return;
     notice("连接已断开，正在重连；草稿保留");
-    reconnectTimer = setTimeout(run(async () => { await api("auth", {}); connectEvents(); }), 2000);
+    reconnectTimer = setTimeout(reconnect, 2000);
   };
 }
 window.addEventListener("pagehide", () => { stopped = true; clearTimeout(reconnectTimer); socket?.close(); });
