@@ -58,4 +58,8 @@ h3 {font:10px var(--mono);color:var(--muted);padding:12px 10px;border-top:1px so
 .editor-host {flex:1;min-height:0;overflow:hidden}
 .tree-dir {padding-left:12px}.tree-dir>summary {cursor:pointer;padding:4px 8px;font:12px var(--mono)}
 .file-state {color:var(--muted)}.file-state.dirty {color:var(--accent)}
+.commit-row {display:block;width:100%;text-align:left;white-space:pre-wrap;border:0;border-radius:0;border-bottom:1px solid var(--border);padding:12px;font:12px/1.7 var(--mono)}
+.git-files {display:flex;flex-wrap:wrap;gap:6px;padding:8px}
+.historical-file {height:65vh;display:flex;flex-direction:column;min-height:0}
+.blame {white-space:pre;overflow:auto;padding:12px;font:12px/1.5 var(--mono)}
 @media(max-width:950px) {#console {grid-template-columns:140px 180px minmax(250px,1fr) minmax(280px,1fr)}}

@@ -1,6 +1,7 @@
 import { mountDiff } from "./diff.js";
 import { createReplyRenderer } from "./reply.js";
 import { createFileEditor } from "./editor.js";
+import { showGitHistory } from "./git-view.js";
 
 const $ = id => document.getElementById(id);
 const params = new URLSearchParams(location.hash.slice(1));
@@ -14,6 +15,7 @@ let diff;
 const positions = new Map();
 let renderTimer;
 let editor, currentFile;
+let disposeHistory;
 let socket;
 let foreground = document.visibilityState === "visible" && document.hasFocus();
 const expanded = new Set([""]);
@@ -21,6 +23,7 @@ function leaveFile() {
   if (editor?.dirty && !confirm("存在未保存修改。放弃这些修改并切换？")) return false;
   editor?.destroy(); editor = undefined; currentFile = undefined; return true;
 }
+function closeHistory() { disposeHistory?.(); disposeHistory = undefined; }
 export function notice(message) { $("notice").textContent = message; }
 export async function api(path, body, method = body === undefined ? "GET" : "POST") {
   const response = await fetch("/api/" + path, {
@@ -73,6 +76,7 @@ async function refresh() {
 }
 async function chooseProject(root) {
   if (!leaveFile()) return;
+  closeHistory();
   state.root = root; state.session = ""; state.round = ""; state.data = null; state.mode = "turn";
   expanded.clear(); expanded.add("");
   await refresh(); await loadTree(); updateWatch();
@@ -111,10 +115,10 @@ async function loadRound() {
   renderer.destroy();
   state.data = null;
   $("changed").replaceChildren();
-  $("content").replaceChildren();
+  if (state.mode === "turn") $("content").replaceChildren();
   $("reply-source").value = "";
   if (!state.session || !state.round) {
-    $("content").textContent = "此项目尚无本轮报告；仍可浏览文件与历史。";
+    if (state.mode === "turn") $("content").textContent = "此项目尚无本轮报告；仍可浏览文件与历史。";
     $("document").textContent = "尚无回复";
     return;
   }
@@ -134,6 +138,7 @@ async function loadRound() {
 }
 function showDiff(file) {
   if (!leaveFile()) return;
+  closeHistory();
   generation++;
   state.mode = "turn"; state.file = file.path;
   const root = document.createElement("div"); root.className = "diff-surface";
@@ -146,6 +151,7 @@ function showDiff(file) {
 }
 async function openFile(path, line = 1, offset = 0) {
   if (!state.root || !leaveFile()) return;
+  closeHistory();
   const root = state.root, current = ++generation;
   const file = await api(`file?root=${encodeURIComponent(root)}&path=${encodeURIComponent(path)}&offset=${offset}`);
   if (current !== generation || root !== state.root) return;
@@ -235,7 +241,12 @@ $("rounds").onchange = run(e => chooseRound(e.target.value));
 $("previous").onclick = run(() => { const rounds = session()?.rounds || []; return chooseRound(rounds[Math.max(0, rounds.findIndex(r => r.id === state.round) - 1)]?.id || ""); });
 $("next").onclick = run(() => { const rounds = session()?.rounds || []; return chooseRound(rounds[Math.min(rounds.length - 1, rounds.findIndex(r => r.id === state.round) + 1)]?.id || ""); });
 $("latest").onclick = run(() => chooseRound(session()?.rounds.at(-1)?.id || ""));
-$("turn-tab").onclick = run(async () => { if (!leaveFile()) return; state.mode = "turn"; await loadRound(); });
+$("turn-tab").onclick = run(async () => { if (!leaveFile()) return; closeHistory(); state.mode = "turn"; await loadRound(); });
+$("history-tab").onclick = run(async () => {
+  if (!state.root || !leaveFile()) return;
+  closeHistory(); generation++; state.mode = "history";
+  disposeHistory = await showGitHistory($("content"), { root: state.root, api, onOpenCurrent: path => openFile(path), onError: e => notice(e.message) });
+});
 $("show-source").onclick = () => {
   $("reply-source").hidden = !$("reply-source").hidden;
   $("show-source").setAttribute("aria-expanded", String(!$("reply-source").hidden));
@@ -258,7 +269,7 @@ document.addEventListener("keydown", run(async e => {
   const typing = e.target.closest("input,textarea,select,[contenteditable=true]");
   if ((e.metaKey || e.ctrlKey) && e.key === "s") { if (editor) { e.preventDefault(); await saveFile(); } return; }
   if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
-  if (e.key === "e") editor?.enable();
+  if (e.key === "e" && editor && !editor.editable) { e.preventDefault(); editor.enable(); }
   if (state.mode === "turn" && ["j","n","k","p"].includes(e.key)) { e.preventDefault(); diff?.nav(["j","n"].includes(e.key) ? 1 : -1); }
 }));
 window.addEventListener("beforeunload", e => { if (editor?.dirty) { e.preventDefault(); e.returnValue = ""; } });

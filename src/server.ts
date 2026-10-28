@@ -10,6 +10,7 @@ import type { Registration, Round } from "./model.ts";
 import { bearerToken, hasServiceHost, isCrossOrigin } from "./service-protocol.mjs";
 import { createReplyUrl, parseReplyReference, readReply } from "./session-reply.mjs";
 import { tree, readText, saveText, projectPath, ignored } from "./files.ts";
+import { gitQuery } from "./git.ts";
 
 export const APP = "pi-review-console";
 export const PROTOCOL = 1;
@@ -113,6 +114,9 @@ export async function startConsole(options: { directory: string; port?: number; 
         }
         if (url.pathname === "/api/metrics" && request.method === "GET") {
           json(response, { watchers: [...watchers.values()].reduce((n, w) => n + w.handles.length, 0), rss: process.memoryUsage().rss }); return;
+        }
+        if (url.pathname.startsWith("/api/git/") && request.method === "GET") {
+          json(response, await gitQuery(store, url.pathname.slice("/api/git/".length), url.searchParams)); return;
         }
         if (url.pathname === "/api/tree" && request.method === "GET") {
           json(response, await tree(store, url.searchParams.get("root") || "", url.searchParams.get("path") || "")); return;
