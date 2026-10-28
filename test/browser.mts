@@ -1,6 +1,6 @@
 import { chromium } from "playwright";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { startConsole } from "../src/server.ts";
@@ -61,9 +61,47 @@ try {
   await page.click('[data-collapse="reply-pane"]');
   assert.equal(await page.locator("#reply-pane").evaluate(el => Math.round(el.getBoundingClientRect().width)), 40);
   await page.click('[data-collapse="reply-pane"]');
+  await page.locator("#document a", { hasText: "README.md" }).click();
+  assert.match(await page.locator("#content").textContent(), /旧标题/);
+  await page.getByRole("button", { name: "完整文件", exact: true }).click();
+  await page.locator(".cm-content[contenteditable=true]").waitFor();
+  await page.locator(".cm-content").fill("# 手动修改\n");
+  await page.waitForFunction(() => document.querySelector(".file-state")?.textContent === "未保存");
+  assert.equal(await readFile(join(root, "README.md"), "utf8"), "# 当前文件\n\n可编辑。\n");
+  await page.getByRole("button", { name: "保存 ⌘S", exact: true }).click();
+  await page.waitForFunction(() => document.querySelector(".file-state")?.textContent !== "未保存");
+  assert.match(await readFile(join(root, "README.md"), "utf8"), /手动修改/);
+  await page.locator(".cm-content").fill("# 保留草稿\n");
+  await page.waitForFunction(() => document.querySelector(".file-state")?.textContent === "未保存");
+  await writeFile(join(root, "README.md"), "# Agent 改动\n");
+  page.once("dialog", dialog => dialog.dismiss());
+  await page.getByRole("button", { name: "保存 ⌘S", exact: true }).click();
+  await page.waitForFunction(() => document.querySelector("#notice").textContent.includes("磁盘文件已变化"));
+  assert.match(await page.locator(".cm-content").textContent(), /保留草稿/);
+  assert.equal(await readFile(join(root, "README.md"), "utf8"), "# Agent 改动\n");
+  page.once("dialog", dialog => dialog.dismiss());
+  await page.locator(".project").nth(1).click();
+  assert.match(await page.locator(".cm-content").textContent(), /保留草稿/);
+  page.once("dialog", dialog => dialog.accept());
+  await page.getByRole("button", { name: "重新载入", exact: true }).click();
+  await page.waitForFunction(() => document.querySelector(".cm-content")?.textContent.includes("Agent 改动"));
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send("Emulation.setFocusEmulationEnabled", { enabled: true });
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  await page.waitForFunction(async () => {
+    const token = sessionStorage.getItem("review-token");
+    const metrics = await (await fetch("/api/metrics", { headers: { Authorization: "Bearer " + token } })).json();
+    return metrics.watchers > 0;
+  });
+  await page.evaluate(() => window.dispatchEvent(new Event("blur")));
+  await page.waitForFunction(async () => {
+    const token = sessionStorage.getItem("review-token");
+    const metrics = await (await fetch("/api/metrics", { headers: { Authorization: "Bearer " + token } })).json();
+    return metrics.watchers === 0;
+  });
   await page.screenshot({ path: "test-results/review.png", fullPage: true });
   assert.deepEqual(errors, []);
-  console.log(JSON.stringify({ passed: ["same round diff/reply", "math", "Mermaid", "function plot", "3 projects", "session isolation", "paused history", "40px fold"], directory }));
+  console.log(JSON.stringify({ passed: ["same round diff/reply", "math", "Mermaid", "function plot", "3 projects", "session isolation", "paused history", "40px fold", "manual save", "conflict keeps draft", "navigation protects draft", "foreground-only watchers"], directory }));
 } catch (error) {
   console.error({ errors, document: await page.locator("#document").textContent() });
   await page.screenshot({ path: "test-results/failure.png", fullPage: true });

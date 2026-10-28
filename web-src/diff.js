@@ -164,6 +164,12 @@ export function mountDiff(root, file, onOpen) {
   });
   root.querySelector("[data-wrap]").onchange=e=>diffs.classList.toggle("nowrap",!e.target.checked);
   render();
-  return { nav };
+  return {
+    nav,
+    goToLine(line) {
+      const row = [...diffs.querySelectorAll("tr")].find(r => Number(r.querySelectorAll(".ln")[1]?.textContent) === line);
+      row?.scrollIntoView({ block: "center" });
+    },
+  };
 }
 

@@ -4,10 +4,12 @@ import { randomUUID, timingSafeEqual } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { join, resolve } from "node:path";
 import { WebSocketServer, WebSocket } from "ws";
+import { watch, type FSWatcher } from "node:fs";
 import { Store, ConsoleError } from "./store.ts";
 import type { Registration, Round } from "./model.ts";
 import { bearerToken, hasServiceHost, isCrossOrigin } from "./service-protocol.mjs";
 import { createReplyUrl, parseReplyReference, readReply } from "./session-reply.mjs";
+import { tree, readText, saveText, projectPath, ignored } from "./files.ts";
 
 export const APP = "pi-review-console";
 export const PROTOCOL = 1;
@@ -35,6 +37,13 @@ export async function startConsole(options: { directory: string; port?: number; 
   await store.load();
   const web = options.web || fileURLToPath(new URL("./web/", import.meta.url));
   const peers = new Set<WebSocket>();
+  const watchers = new Map<WebSocket, { handles: FSWatcher[]; timer?: NodeJS.Timeout; generation: number }>();
+  function stopWatch(peer: WebSocket) {
+    const active = watchers.get(peer);
+    active?.handles.forEach(w => w.close());
+    clearTimeout(active?.timer);
+    watchers.delete(peer);
+  }
   const bridges = new Map<string, { origin: string; token: string; controller: AbortController }>();
   const notify = (type: string, data?: unknown) => {
     const text = JSON.stringify({ type, data });
@@ -101,6 +110,18 @@ export async function startConsole(options: { directory: string; port?: number; 
         if (url.pathname === "/api/auth" && request.method === "POST") {
           response.setHeader("Set-Cookie", `review=${token}; HttpOnly; SameSite=Strict; Path=/`);
           json(response, {}); return;
+        }
+        if (url.pathname === "/api/metrics" && request.method === "GET") {
+          json(response, { watchers: [...watchers.values()].reduce((n, w) => n + w.handles.length, 0), rss: process.memoryUsage().rss }); return;
+        }
+        if (url.pathname === "/api/tree" && request.method === "GET") {
+          json(response, await tree(store, url.searchParams.get("root") || "", url.searchParams.get("path") || "")); return;
+        }
+        if (url.pathname === "/api/file" && request.method === "GET") {
+          json(response, await readText(store, url.searchParams.get("root") || "", url.searchParams.get("path") || "", Number(url.searchParams.get("offset") || 0))); return;
+        }
+        if (url.pathname === "/api/file" && request.method === "PUT") {
+          json(response, await saveText(store, await jsonBody(request))); return;
         }
         if (url.pathname === "/api/projects" && request.method === "GET") { json(response, { projects: store.projects, sessions: store.sessions }); return; }
         if (url.pathname === "/api/projects" && request.method === "POST") {
@@ -171,7 +192,7 @@ export async function startConsole(options: { directory: string; port?: number; 
       if (!asset) throw new ConsoleError("Not found", 404);
       response.writeHead(200, { "Content-Type": asset[1] }).end(await readFile(join(web, asset[0])));
     } catch (e) {
-      if (!response.headersSent) json(response, { error: errorText(e) }, e instanceof ConsoleError ? e.status : 500);
+      if (!response.headersSent) json(response, { error: errorText(e) }, e instanceof ConsoleError ? e.status : (e as NodeJS.ErrnoException).code === "ENOENT" ? 404 : 500);
       else response.destroy();
     }
   });
@@ -184,7 +205,31 @@ export async function startConsole(options: { directory: string; port?: number; 
     socketServer.handleUpgrade(request, socket, head, peer => {
       peers.add(peer);
       peer.on("error", () => {});
-      peer.on("close", () => peers.delete(peer));
+      peer.on("close", () => { peers.delete(peer); stopWatch(peer); });
+      peer.on("message", async raw => {
+        try {
+          const message = JSON.parse(raw.toString());
+          if (message.type !== "watch") return;
+          stopWatch(peer);
+          if (!message.root) return;
+          const active = { handles: [] as FSWatcher[], timer: undefined as NodeJS.Timeout | undefined, generation: 0 };
+          watchers.set(peer, active);
+          const paths = Array.isArray(message.paths) ? message.paths.slice(0, 64) : [""];
+          for (const path of new Set<string>(paths)) {
+            const actual = await projectPath(store, message.root, path);
+            if (watchers.get(peer) !== active) return;
+            const handle = watch(actual, (_type, file) => {
+              if (file && ignored.has(String(file))) return;
+              clearTimeout(active.timer);
+              active.timer = setTimeout(() => {
+                if (peer.readyState === WebSocket.OPEN) peer.send(JSON.stringify({ type: "files", data: { root: message.root } }));
+              }, 200);
+            });
+            handle.on("error", () => { stopWatch(peer); });
+            active.handles.push(handle);
+          }
+        } catch (e) { stopWatch(peer); if (peer.readyState === WebSocket.OPEN) peer.send(JSON.stringify({ type: "watch-error", data: errorText(e) })); }
+      });
       peer.send(JSON.stringify({ type: "state" }));
     });
   });
@@ -195,7 +240,7 @@ export async function startConsole(options: { directory: string; port?: number; 
     origin, token,
     async close() {
       bridges.forEach(b => b.controller.abort());
-      peers.forEach(p => p.terminate());
+      peers.forEach(p => { stopWatch(p); p.terminate(); });
       socketServer.close();
       await new Promise<void>(resolve => { server.close(() => resolve()); server.closeAllConnections(); });
     },

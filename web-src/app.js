@@ -1,5 +1,6 @@
 import { mountDiff } from "./diff.js";
 import { createReplyRenderer } from "./reply.js";
+import { createFileEditor } from "./editor.js";
 
 const $ = id => document.getElementById(id);
 const params = new URLSearchParams(location.hash.slice(1));
@@ -12,6 +13,14 @@ let renderer = createReplyRenderer($("document"));
 let diff;
 const positions = new Map();
 let renderTimer;
+let editor, currentFile;
+let socket;
+let foreground = document.visibilityState === "visible" && document.hasFocus();
+const expanded = new Set([""]);
+function leaveFile() {
+  if (editor?.dirty && !confirm("存在未保存修改。放弃这些修改并切换？")) return false;
+  editor?.destroy(); editor = undefined; currentFile = undefined; return true;
+}
 export function notice(message) { $("notice").textContent = message; }
 export async function api(path, body, method = body === undefined ? "GET" : "POST") {
   const response = await fetch("/api/" + path, {
@@ -51,7 +60,7 @@ async function refresh() {
   if (!state.sessions.some(s => s.id === state.session && s.root === state.root)) state.session = state.sessions.filter(s => s.root === state.root).at(-1)?.id || "";
   const selected = session();
   const latest = selected?.rounds.at(-1)?.id || "";
-  const wasFollowing = !state.round || state.round === previousLatest;
+  const wasFollowing = !editor && (!state.round || state.round === previousLatest);
   if (wasFollowing) state.round = latest;
   renderProjects();
   $("sessions").replaceChildren(...state.sessions.filter(s => s.root === state.root).map(s => option(s.id, s.title)));
@@ -63,17 +72,20 @@ async function refresh() {
   if (state.data?.id !== state.round || state.data?.sessionId !== state.session) await loadRound();
 }
 async function chooseProject(root) {
+  if (!leaveFile()) return;
   state.root = root; state.session = ""; state.round = ""; state.data = null; state.mode = "turn";
-  await refresh();
+  expanded.clear(); expanded.add("");
+  await refresh(); await loadTree(); updateWatch();
 }
 export function savePosition() {
   if (state.data) positions.set(state.data.sessionId + ":" + state.data.id, $("document").parentElement.scrollTop);
 }
 export async function focusSession(hash) {
+  if (!leaveFile()) return;
   const target = new URLSearchParams(hash.slice(1));
   state.session = target.get("session") || state.session;
   state.root = state.sessions.find(s => s.id === state.session)?.root || target.get("root") || state.root;
-  state.round = ""; await refresh();
+  state.round = ""; await refresh(); await loadTree(); updateWatch();
 }
 $("add-project").onclick = run(async () => {
   const root = prompt("本地项目的完整目录路径");
@@ -121,6 +133,8 @@ async function loadRound() {
   }
 }
 function showDiff(file) {
+  if (!leaveFile()) return;
+  generation++;
   state.mode = "turn"; state.file = file.path;
   const root = document.createElement("div"); root.className = "diff-surface";
   $("content").replaceChildren(root);
@@ -130,14 +144,98 @@ function showDiff(file) {
     warning.textContent = "本轮中断、失败或报告不完整；只显示已捕获部分"; root.prepend(warning);
   }
 }
-async function openFile(path) { notice("完整文件查看将在文件任务接入：" + path); }
-async function chooseRound(id) { state.round = id; await loadRound(); await refresh(); }
-$("sessions").onchange = run(async e => { state.session = e.target.value; state.round = ""; await refresh(); });
+async function openFile(path, line = 1, offset = 0) {
+  if (!state.root || !leaveFile()) return;
+  const root = state.root, current = ++generation;
+  const file = await api(`file?root=${encodeURIComponent(root)}&path=${encodeURIComponent(path)}&offset=${offset}`);
+  if (current !== generation || root !== state.root) return;
+  state.mode = "file"; currentFile = { ...file, root, line };
+  const holder = document.createElement("div"); holder.className = "file-view";
+  const title = document.createElement("div"); title.className = "content-title"; title.textContent = path + (file.partial ? ` · 分段只读 · 字节 ${file.offset} / ${file.size}` : "");
+  const toolbar = document.createElement("div"); toolbar.className = "file-toolbar";
+  const status = document.createElement("span"); status.className = "file-state";
+  const edit = button("编辑 (e)", () => editor?.enable());
+  const save = button("保存 ⌘S", saveFile);
+  const reload = button("重新载入", () => openFile(path, line, offset));
+  toolbar.append(edit, save, reload, status);
+  if (file.nextOffset !== null) toolbar.append(button("下一段", () => openFile(path, 1, file.nextOffset)));
+  if (file.offset) toolbar.append(button("回到文件开头", () => openFile(path)));
+  const host = document.createElement("div"); host.className = "editor-host";
+  holder.append(title, toolbar, host); $("content").replaceChildren(holder);
+  editor = createFileEditor(host, file, run(saveFile), () => {
+    status.textContent = editor?.dirty ? "未保存" : editor?.editable ? "可编辑 · 手动保存" : "只读";
+    status.classList.toggle("dirty", !!editor?.dirty);
+    save.disabled = !editor?.dirty; edit.disabled = !!file.partial || !!editor?.editable;
+  });
+  status.textContent = editor.editable ? "可编辑 · 手动保存" : "只读";
+  save.disabled = true; edit.disabled = file.partial || editor.editable;
+  editor.goToLine(line);
+  updateWatch();
+}
+async function saveFile() {
+  if (!editor?.dirty || !currentFile) return;
+  const draft = editor.text, target = currentFile, activeEditor = editor;
+  try {
+    const result = await api("file", { root: target.root, path: target.path, content: draft, version: target.version }, "PUT");
+    target.version = result.version;
+    // A new edit during the request remains dirty rather than being marked saved.
+    if (editor === activeEditor && editor.text === draft) editor.markSaved();
+    notice("已保存");
+  } catch (e) {
+    notice(e.message);
+    if (e.message.includes("磁盘文件已变化") && confirm("磁盘文件已被修改。是否明确覆盖当前磁盘版本？取消则保留草稿。")) {
+      const fresh = await api(`file?root=${encodeURIComponent(target.root)}&path=${encodeURIComponent(target.path)}`);
+      target.version = fresh.version; await saveFile();
+    }
+  }
+}
+async function loadTree() {
+  const root = state.root;
+  $("tree").replaceChildren();
+  if (!root) return;
+  const load = async (path, parent) => {
+    const data = await api(`tree?root=${encodeURIComponent(root)}&path=${encodeURIComponent(path)}`);
+    if (root !== state.root) return;
+    parent.replaceChildren();
+    for (const item of data.entries) {
+      const file = path ? path + "/" + item.name : item.name;
+      if (item.directory) {
+        const details = document.createElement("details"); details.className = "tree-dir";
+        const summary = document.createElement("summary"); summary.textContent = item.name + "/";
+        const children = document.createElement("div"); details.append(summary, children);
+        details.ontoggle = run(async () => {
+          if (details.open) { expanded.add(file); await load(file, children); }
+          else { expanded.delete(file); children.replaceChildren(); }
+          updateWatch();
+        });
+        parent.append(details);
+      } else parent.append(button(item.name + (item.link ? " ↗" : ""), () => openFile(file), "file-button"));
+    }
+    if (data.truncated) { const warning = document.createElement("p"); warning.textContent = "目录条目过多，仅显示前 2000 项"; parent.append(warning); }
+  };
+  await load("", $("tree"));
+}
+function updateWatch() {
+  if (socket?.readyState !== WebSocket.OPEN) return;
+  const paths = new Set(expanded);
+  if (currentFile) paths.add(currentFile.path.includes("/") ? currentFile.path.slice(0, currentFile.path.lastIndexOf("/")) : "");
+  socket.send(JSON.stringify({ type: "watch", root: foreground ? state.root : null, paths: [...paths] }));
+}
+async function recheckFile() {
+  if (!foreground || !currentFile || currentFile.partial) return;
+  const target = currentFile;
+  const fresh = await api(`file?root=${encodeURIComponent(target.root)}&path=${encodeURIComponent(target.path)}`);
+  if (currentFile !== target || fresh.version === target.version) return;
+  if (editor?.dirty) notice("磁盘文件已变化；当前草稿保留，保存时需处理冲突");
+  else await openFile(target.path, target.line);
+}
+async function chooseRound(id) { if (!leaveFile()) return; state.mode = "turn"; state.round = id; await loadRound(); await refresh(); }
+$("sessions").onchange = run(async e => { if (!leaveFile()) { e.target.value = state.session; return; } state.session = e.target.value; state.round = ""; state.mode = "turn"; await refresh(); });
 $("rounds").onchange = run(e => chooseRound(e.target.value));
 $("previous").onclick = run(() => { const rounds = session()?.rounds || []; return chooseRound(rounds[Math.max(0, rounds.findIndex(r => r.id === state.round) - 1)]?.id || ""); });
 $("next").onclick = run(() => { const rounds = session()?.rounds || []; return chooseRound(rounds[Math.min(rounds.length - 1, rounds.findIndex(r => r.id === state.round) + 1)]?.id || ""); });
 $("latest").onclick = run(() => chooseRound(session()?.rounds.at(-1)?.id || ""));
-$("turn-tab").onclick = run(async () => { state.mode = "turn"; await loadRound(); });
+$("turn-tab").onclick = run(async () => { if (!leaveFile()) return; state.mode = "turn"; await loadRound(); });
 $("show-source").onclick = () => {
   $("reply-source").hidden = !$("reply-source").hidden;
   $("show-source").setAttribute("aria-expanded", String(!$("reply-source").hidden));
@@ -155,13 +253,43 @@ document.querySelectorAll("[data-collapse]").forEach(b => b.onclick = () => {
   const widths = ["projects-pane","files-pane","content-pane","reply-pane"].map((id,i) => $(id).classList.contains("collapsed") ? "40px" : ["176px","236px","minmax(260px,1fr)","minmax(300px,1fr)"][i]);
   $("console").style.gridTemplateColumns = widths.join(" ");
 });
+document.addEventListener("keydown", run(async e => {
+  if (e.defaultPrevented) return;
+  const typing = e.target.closest("input,textarea,select,[contenteditable=true]");
+  if ((e.metaKey || e.ctrlKey) && e.key === "s") { if (editor) { e.preventDefault(); await saveFile(); } return; }
+  if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.key === "e") editor?.enable();
+  if (state.mode === "turn" && ["j","n","k","p"].includes(e.key)) { e.preventDefault(); diff?.nav(["j","n"].includes(e.key) ? 1 : -1); }
+}));
+window.addEventListener("beforeunload", e => { if (editor?.dirty) { e.preventDefault(); e.returnValue = ""; } });
+window.addEventListener("blur", () => { foreground = false; updateWatch(); });
+window.addEventListener("focus", run(async () => { foreground = document.visibilityState === "visible"; updateWatch(); await recheckFile(); }));
+document.addEventListener("visibilitychange", run(async () => { foreground = document.visibilityState === "visible" && document.hasFocus(); updateWatch(); await recheckFile(); }));
+$("document").addEventListener("click", run(async e => {
+  const anchor = e.target.closest("a");
+  if (!anchor || anchor.matches(".footnote-ref a,.footnote-backref")) return;
+  const href = anchor.getAttribute("href") || "";
+  if (/^(https?:|mailto:|#)/.test(href)) return;
+  e.preventDefault();
+  const match = decodeURIComponent(href.replace(/^file:\/\//, "")).match(/^(.*?)(?::(\d+)(?::\d+)?|#L(\d+))?$/);
+  const path = match?.[1], line = Number(match?.[2] || match?.[3] || 1);
+  const file = state.data?.report?.files.find(f => f.path === path);
+  if (file) {
+    showDiff(file); diff?.goToLine(line);
+    if ($("content-pane").classList.contains("collapsed")) document.querySelector('[data-collapse="content-pane"]').click();
+  }
+  else await openFile(path, line);
+}));
 run(async () => {
   await api("auth", {});
-  await refresh();
-  const socket = new WebSocket(location.origin.replace("http", "ws") + "/events");
+  await refresh(); await loadTree();
+  socket = new WebSocket(location.origin.replace("http", "ws") + "/events");
+  socket.onopen = updateWatch;
   socket.onmessage = run(async e => {
     const event = JSON.parse(e.data);
-    if (event.type === "focus") { state.root = event.data.root; state.session = event.data.sessionId; state.round = ""; }
+    if (event.type === "focus") { if (!leaveFile()) return; state.root = event.data.root; state.session = event.data.sessionId; state.round = ""; }
+    if (event.type === "files") { await recheckFile(); return; }
+    if (event.type === "watch-error") { notice(event.data); return; }
     await refresh();
   });
   socket.onclose = () => notice("连接已断开，刷新页面重新连接");
