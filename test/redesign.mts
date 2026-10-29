@@ -63,11 +63,11 @@ try {
  const scratch=await browser.newPage({viewport:{width:1280,height:850}});
  scratch.on("pageerror",e=>errors.push(e.message));
  await scratch.goto(service.origin+"/scratch");
- await scratch.click("#new-doc");await scratch.fill("#scratch-source","# 临时文档\n\n**正文**");
+ await scratch.click("#new-doc");await scratch.getByRole("textbox",{name:"Markdown source",exact:true}).fill("# 临时文档\n\n**正文**");
  await scratch.locator(".scratch-preview h1",{hasText:"临时文档"}).waitFor();
  await scratch.click('[data-view="preview"]');await scratch.click('[data-view="source"]');
- assert.match(await scratch.locator("#scratch-source").inputValue(),/正文/);
- await scratch.click("#new-diff");await scratch.fill('[data-side="before"]',"old\n");await scratch.fill('[data-side="after"]',"new\n");
+ assert.match(await scratch.getByRole("textbox",{name:"Markdown source",exact:true}).innerText(),/正文/);
+ await scratch.click("#new-diff");await scratch.getByRole("textbox",{name:"旧文本",exact:true}).fill("old\n");await scratch.getByRole("textbox",{name:"新文本",exact:true}).fill("new\n");
  await scratch.click('[data-view="diff"]');await scratch.locator("td.content.insert").waitFor();
  assert.match(await scratch.locator("td.content.delete").textContent(),/old/);
  await scratch.click("#tabs-layout");await scratch.screenshot({path:join(shots,"scratch.png")});
@@ -75,7 +75,7 @@ try {
  assert.equal(await scratch.locator('[role="tab"]').count(),2);
  scratch.once("dialog",d=>d.accept());await scratch.locator(".tab-close").last().click();
  await scratch.click('[role="tab"]');await scratch.click('[data-view="split"]');
- assert.match(await scratch.locator("#scratch-source").inputValue(),/正文/);
+ assert.match(await scratch.getByRole("textbox",{name:"Markdown source",exact:true}).innerText(),/正文/);
  assert.deepEqual(errors,[]);
  console.log(JSON.stringify({passed:true,directory,screenshots:shots}));
 } finally {await browser.close();await service.close();}

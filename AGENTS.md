@@ -1,3 +1,7 @@
+## Development
+
+构建、测试、桌面发布或排查环境问题前，先读 `docs/development.md`。该文档是当前流程入口；验收记录是历史证据，不用临时交接文件或旧缓存路径作为构建前提。
+
 ## Agent skills
 
 ### Issue tracker

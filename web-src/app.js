@@ -1,6 +1,6 @@
 import { mountDiff } from "./diff.js";
 import { createReplyRenderer } from "./reply.js";
-import { createFileEditor } from "./editor.js";
+import { createFileEditor, editHistory } from "./editor.js";
 import { showGitHistory } from "./git-view.js";
 import { setupTheme } from "./theme.js";
 
@@ -189,7 +189,7 @@ export async function focusSession(hash) {
 $("add-project").onclick = run(async () => {
   // The desktop shell opens the system picker; the browser build keeps the
   // text prompt, and a failed bridge call falls back to it rather than dying.
-  let root = "";
+  let root = null;
   if (window.mygo) { try { root = await window.mygo.call("Desktop.PickFolder"); } catch { root = null; } }
   if (root === null) root = prompt("本地项目的完整目录路径");
   if (!root) return;
@@ -457,7 +457,7 @@ function paneIcon(pane, expanded) {
     '<path d="M6.4 6.2 4.4 8l2 1.8"/></svg>';
 }
 function layoutPanes() {
-  const widths = panes.map((id, i) => $(id).classList.contains("collapsed") ? "40px" : ["var(--projects-width,196px)", "var(--files-width,248px)", "minmax(280px,1fr)", "minmax(360px,470px)"][i]);
+  const widths = panes.map((id, i) => $(id).classList.contains("collapsed") ? "40px" : ["var(--projects-width,196px)", "var(--files-width,248px)", "minmax(var(--content-min-width,280px),1fr)", "minmax(360px,470px)"][i]);
   if ($("content-pane").classList.contains("collapsed") && !$("reply-pane").classList.contains("collapsed")) widths[3] = "minmax(360px,1fr)";
   $("console").style.gridTemplateColumns = widths.join(" ");
   document.querySelectorAll("[data-collapse]").forEach(control => {
@@ -467,7 +467,7 @@ function layoutPanes() {
     control.setAttribute("aria-expanded", String(open));
     control.setAttribute("aria-label", label);
     control.title = label;
-    if (!control.querySelector("svg")) control.innerHTML = paneIcon(control.dataset.collapse, open);
+    control.innerHTML = paneIcon(control.dataset.collapse, open);
   });
 }
 function setPane(id, collapsed) {
@@ -583,6 +583,7 @@ window.reviewDesktop = {
   },
   focus: focusSession,
   command(name) {
+    if (name === "undo" || name === "redo") editHistory(name);
     if (name === "scratch") $("open-scratch").click();
     if (name === "save") {
       if (sourceOpen) notice("回复原文仅临时预览，不写入文件或会话");

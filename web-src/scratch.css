@@ -22,7 +22,6 @@ body { height: 100dvh; overflow: hidden; display: flex; flex-direction: column; 
 .scratch-panes > * { min-width: 0; min-height: 0; border-right: 1px solid var(--border); }
 .scratch-input { display: flex; flex-direction: column; }
 .scratch-input > label { padding: 6px 12px; color: var(--subtle); border-bottom: 1px solid var(--border); font: 10px/1.5 var(--mono); }
-.scratch-input textarea { flex: 1; width: 100%; min-height: 0; padding: 20px; resize: none; border: 0; outline-offset: -2px; background: var(--sheet); color: var(--ink); font: 12.5px/1.75 var(--mono); tab-size: 2; }
 .scratch-preview { overflow: auto; }
 .scratch-preview .markdown-body { padding: 32px 28px 80px; }
 .scratch-panes > .diff-surface { overflow: auto; }

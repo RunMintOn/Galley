@@ -6,20 +6,21 @@
 
 本轮提供 mygo 系统 WKWebView 外壳：四栏审查台与独立临时文档窗口，共用现有本地服务。应用随包携带 Node，无需另装 Node 才能运行；业务后端仍为现有 JavaScript，不是 Go 重写。
 
-源码构建需要 Go 1.27.3+、固定的 Node 22.23.2，以及本仓库 npm 依赖：
+源码构建需要 Go（最低版本见 `desktop/go.mod`）、Node（版本见 `.node-version`）及本仓库 npm 依赖。首次准备环境、测试和安全更新流程见 [开发与交接](docs/development.md)。
 
 ```sh
-npm ci --legacy-peer-deps
+npm ci
 npm run build:desktop
 open "dist-desktop/Review Console.app"
 ```
 
-Go 不在 PATH 时可用 `GO_BINARY=/absolute/path/to/go npm run build:desktop`。产物为本机临时签名的 `.app`，不是已公证的公众发行包。无需安装 mygo CLI 或重建前端工程。
+Go 使用 PATH 中的正常安装，不依赖临时工具链。构建包含网页层，产物为本机签名的 `.app`，不是已公证的公众发行包。无需安装 mygo CLI。正在使用中的应用会阻止覆盖，请按开发文档正常退出并停止旧服务后更新。
 
 `/review` 优先寻找 `REVIEW_CONSOLE_APP` 指定位置、`~/Applications/Review Console.app`、`/Applications/Review Console.app`，再找仓库构建产物；找到后启动或唤回桌面审查台，未安装时保留浏览器入口。配置 `REVIEW_CONSOLE_APP` 时须给完整 `.app` 路径。
 
 - 从第二栏底部或 File 菜单打开临时文档窗口，可与审查台同时使用。
 - 临时窗口支持 Markdown Source/Split/Preview、文本 Diff、多标签与横纵排列；`Cmd+T` 新建 Markdown，`Cmd+Shift+T` 新建 Diff，`Cmd+W` 关闭标签，`Cmd+1…9` 切换。
+- Markdown 与 Diff 两侧源码使用 CodeMirror，提供行号、当前行高亮、软换行和撤销；折行不新增行号，切换标签与视图保留光标和撤销历史。内容仍仅保存在内存中。
 - 临时窗口的预览与回复栏同一套渲染：公式、Mermaid、函数图都会渲染，原始 HTML 仍不执行。
 - 正文默认系统字体，可在回复栏或临时窗口切换系统 / 衬线 / 等宽，两个窗口共用同一选择。
 - 添加目录使用系统选择面板；`Cmd +`、`Cmd -`、`Cmd 0` 放大、缩小、复位当前窗口。
@@ -34,7 +35,7 @@ Go 不在 PATH 时可用 `GO_BINARY=/absolute/path/to/go npm run build:desktop`�
 需要 macOS、Node 22.19+ 和 pi 1.4。
 
 ```sh
-npm ci --legacy-peer-deps
+npm ci
 npm run build
 pi install /absolute/path/to/pi-review-console
 ```
@@ -103,6 +104,8 @@ npm start
 浏览器无法保证跨应用强制激活已有窗口。沿用原回复工具的标签交接机制：能确认已有页面前台显示时复用；否则新页接管，旧页释放资源并成为轻量回执。没有系统级全局热键。
 
 ## 验证
+
+当前完整命令和桌面测试授权、输入法检查见 [开发与交接](docs/development.md)。桌面测试自动构建独立测试包，不覆盖日用应用。
 
 ```sh
 npm run check

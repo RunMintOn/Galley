@@ -6,14 +6,48 @@ import { inside, readText } from "./files.ts";
 import { diffFile } from "./diff.ts";
 import type { ChangedFile } from "./changes.ts";
 
-function execute(root: string, args: string[], limit = 4 * 1024 * 1024): Promise<Buffer> {
+function execute(root: string, args: string[], limit = 4 * 1024 * 1024, input = ""): Promise<Buffer> {
   return new Promise((done, fail) => {
     execFile("git", ["--no-optional-locks", "-c", "core.fsmonitor=false", "-c", "color.ui=false", "-C", root, ...args],
       { encoding: "buffer", maxBuffer: limit, timeout: 10000 }, (error, stdout, stderr) => {
         if (error) fail(new ConsoleError(stderr?.toString().trim() || error.message, 422));
         else done(stdout);
-      }).stdin?.end();
+      }).stdin?.end(input);
   });
+}
+async function batchBlobs(root: string, objects: string[]) {
+  const ids = [...new Set(objects)];
+  const texts = new Map<string, string | Error>();
+  if (!ids.length) return texts;
+  const info = (await execute(root, ["cat-file", "--batch-check"], undefined, ids.join("\n") + "\n")).toString().trimEnd().split("\n");
+  const batches: { id: string; size: number }[][] = [];
+  let batch: { id: string; size: number }[] = [], bytes = 0;
+  for (const line of info) {
+    const [id, type, rawSize] = line.split(" "), size = Number(rawSize);
+    if (type !== "blob") texts.set(id, new Error("不是历史文本文件"));
+    else if (size > 2 * 1024 * 1024) texts.set(id, new Error("历史文件超过 2 MiB，未加载"));
+    else {
+      // Bound each subprocess's output without falling back to one process per file.
+      if (bytes + size > 16 * 1024 * 1024 && batch.length) { batches.push(batch); batch = []; bytes = 0; }
+      batch.push({ id, size }); bytes += size;
+    }
+  }
+  if (batch.length) batches.push(batch);
+  for (const entries of batches) {
+    const data = await execute(root, ["cat-file", "--batch"], entries.reduce((n, e) => n + e.size + 128, 0), entries.map(e => e.id).join("\n") + "\n");
+    let offset = 0;
+    for (const { id, size } of entries) {
+      // Blob contents may contain arbitrary newlines or NULs; only the header is line-delimited.
+      const start = data.indexOf(10, offset) + 1;
+      const content = data.subarray(start, start + size); offset = start + size + 1;
+      if (content.includes(0)) texts.set(id, new Error("二进制历史文件不提供文本视图"));
+      else {
+        try { texts.set(id, new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(content)); }
+        catch { texts.set(id, new Error("历史文件不是 UTF-8 文本")); }
+      }
+    }
+  }
+  return texts;
 }
 function hashOf(hash: string) {
   if (!/^[0-9a-f]{40,64}$/i.test(hash)) throw new ConsoleError("提交 hash 无效");
@@ -169,36 +203,41 @@ export async function gitQuery(store: Store, operation: string, params: URLSearc
     return { text: (await execute(top, ["blame", "--line-porcelain", hash, "--", repoPath(path)])).toString() };
   }
   if (operation === "commit") {
-    const meta = (await execute(top, ["show", "-s", "--format=%an%x00%aI%x00%s", hash])).toString().trimEnd().split("\0");
-    const metadata = { author: meta[0], date: meta[1], subject: meta[2] };
-    const parents = (await execute(top, ["rev-list", "--parents", "-n", "1", hash])).toString().trim().split(" ").slice(1);
+    const meta = (await execute(top, ["show", "-s", "--format=%P%x00%an%x00%aI%x00%s", hash])).toString().trimEnd().split("\0");
+    const metadata = { author: meta[1], date: meta[2], subject: meta[3] };
+    const parents = meta[0].split(" ").filter(Boolean);
     const parentIndex = Number(params.get("parent") || 0);
     if (!Number.isInteger(parentIndex) || parentIndex < 0 || (parents.length && parentIndex >= parents.length)) throw new ConsoleError("父版本无效");
     const parent = parents[parentIndex] || null;
     const args = parent
-      ? ["diff-tree", "--no-ext-diff", "--no-textconv", "-r", "--no-commit-id", "--name-status", "-z", "-M", parent, hash]
-      : ["diff-tree", "--root", "-r", "--no-commit-id", "--name-status", "-z", hash];
+      ? ["diff-tree", "--no-ext-diff", "--no-textconv", "-r", "--no-commit-id", "--raw", "--no-abbrev", "-z", "-M", parent, hash]
+      : ["diff-tree", "--root", "-r", "--no-commit-id", "--raw", "--no-abbrev", "-z", hash];
     const parts = (await execute(top, args)).toString().split("\0").filter(Boolean);
-    const files: ChangedFile[] = [];
+    const entries = [];
     for (let i = 0; i < parts.length;) {
-      const status = parts[i++], beforePath = parts[i++];
+      const [, , beforeID, afterID, status] = parts[i++].slice(1).split(" ");
+      const beforePath = parts[i++];
       const afterPath = /^[RC]/.test(status) ? parts[i++] : beforePath;
       if (!afterPath || (!scoped(afterPath) && !scoped(beforePath))) continue;
       const target = scoped(afterPath) ? afterPath : beforePath;
       const hasBefore = !!parent && status !== "A" && scoped(beforePath);
       const hasAfter = status !== "D" && scoped(afterPath);
       const file: ChangedFile = { path: display(target), status: !hasBefore ? "Added" : !hasAfter ? "Deleted" : "Modified", added: 0, deleted: 0 };
+      if (/^[RC]/.test(status)) file.notice = `原路径：${display(beforePath)}`;
+      entries.push({ file, hasBefore, hasAfter, beforeID, afterID });
+      if (entries.length >= 500) break;
+    }
+    const texts = await batchBlobs(top, entries.flatMap(e => [...(e.hasBefore ? [e.beforeID] : []), ...(e.hasAfter ? [e.afterID] : [])]));
+    const text = (id: string) => { const value = texts.get(id)!; if (value instanceof Error) throw value; return value; };
+    for (const { file, hasBefore, hasAfter, beforeID, afterID } of entries) {
       try {
-        const before = hasBefore ? await blob(parent!, beforePath) : "";
-        const after = hasAfter ? await blob(hash, afterPath) : "";
+        const before = hasBefore ? text(beforeID) : "";
+        const after = hasAfter ? text(afterID) : "";
         file.diff = diffFile(file.path, before, after);
         file.added = file.diff.addedLines; file.deleted = file.diff.deletedLines;
-        if (/^[RC]/.test(status)) file.notice = `原路径：${display(beforePath)}`;
       } catch (e) { file.status = "Unavailable"; file.notice = e instanceof Error ? e.message : String(e); }
-      files.push(file);
-      if (files.length >= 500) return { hash, parent, parents, files, ...metadata, truncated: true };
     }
-    return { hash, parent, parents, files, ...metadata };
+    return { hash, parent, parents, files: entries.map(e => e.file), ...metadata, ...(entries.length >= 500 ? { truncated: true } : {}) };
   }
   throw new ConsoleError("未知 Git 查询", 404);
 }

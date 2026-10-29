@@ -2,10 +2,12 @@ import { createReplyRenderer } from "./reply.js";
 import { mountDiff } from "./diff.js";
 import { diffFile } from "../src/diff.ts";
 import { setupTheme } from "./theme.js";
+import { createScratchEditor, editHistory } from "./editor.js";
 
 const $ = id => document.getElementById(id);
 const tabs = [];
 let active, nextId = 0, renderer, diff, timer;
+let editors = [];
 const paperRoot = document.createElement("div");
 paperRoot.className = "reply-pane scratch-preview";
 const current = () => tabs.find(t => t.id === active);
@@ -24,7 +26,7 @@ function tabsView() {
   }
 }
 function create(kind = "doc") {
-  const tab = { id: ++nextId, kind, name: kind === "doc" ? "untitled" : "untitled diff", named: false, view: kind === "doc" ? "split" : "edit", text: "", before: "", after: "" };
+  const tab = { id: ++nextId, kind, name: kind === "doc" ? "untitled" : "untitled diff", named: false, view: kind === "doc" ? "split" : "edit", text: "", before: "", after: "", editors: {} };
   tabs.push(tab); active = tab.id; render();
 }
 function closeTab(id = active) {
@@ -32,23 +34,27 @@ function closeTab(id = active) {
   if (nonempty(tabs[index]) && !confirm("关闭后临时内容将丢弃，是否继续？")) return;
   tabs.splice(index, 1); if (active === id) active = tabs[Math.min(index, tabs.length - 1)]?.id; render();
 }
-function textarea(tab, key, label, parent) {
+function sourceEditor(tab, key, label, parent) {
   const pane = document.createElement("div"); pane.className = "scratch-input";
   const title = document.createElement("label"); title.textContent = label;
-  const input = document.createElement("textarea"); input.spellcheck = false; input.value = tab[key];
-  input.setAttribute("aria-label", label);
-  if (key === "text") input.id = "scratch-source"; else input.dataset.side = key;
-  input.oninput = () => {
-    tab[key] = input.value;
-    if (!tab.named && key === "text") {
-      tab.name = tab.text.split("\n").find(line => line.trim())?.replace(/^#+\s*/, "").slice(0, 50) || "untitled";
-      tabsView(); $("scratch-name").value = tab.name;
-    }
-    clearTimeout(timer); timer = setTimeout(() => renderer?.render(tab.text), 150);
-  };
-  pane.append(title, input); parent.append(pane);
+  const host = document.createElement("div"); host.className = "editor-host";
+  if (key === "text") host.id = "scratch-source"; else host.dataset.side = key;
+  pane.append(title, host); parent.append(pane);
+  const editor = createScratchEditor(host, {
+    ...tab.editors[key], text: tab[key], label, isMarkdown: key === "text",
+    onChange: text => {
+      tab[key] = text;
+      if (!tab.named && key === "text") {
+        tab.name = tab.text.split("\n").find(line => line.trim())?.replace(/^#+\s*/, "").slice(0, 50) || "untitled";
+        tabsView(); $("scratch-name").value = tab.name;
+      }
+      clearTimeout(timer); timer = setTimeout(() => renderer?.render(tab.text), 150);
+    },
+  });
+  editors.push(() => { tab.editors[key] = editor.snapshot(); editor.destroy(); });
 }
 function render() {
+  editors.forEach(dispose => dispose()); editors = [];
   clearTimeout(timer); renderer?.destroy(); renderer = undefined; diff?.destroy(); diff = undefined;
   tabsView(); const host = $("scratch-work"); host.replaceChildren(); const tab = current();
   if (!tab) { const empty = document.createElement("p"); empty.className = "scratch-empty"; empty.textContent = "没有打开的标签页 · ⌘T 新建"; host.append(empty); return; }
@@ -64,14 +70,14 @@ function render() {
   panes.classList.toggle("single", tab.kind === "doc" ? tab.view !== "split" : tab.view === "diff");
   host.append(bar, panes);
   if (tab.kind === "doc") {
-    if (tab.view !== "preview") textarea(tab, "text", "Markdown source", panes);
+    if (tab.view !== "preview") sourceEditor(tab, "text", "Markdown source", panes);
     if (tab.view !== "source") {
       const article = document.createElement("article"); article.className = "markdown-body";
       paperRoot.replaceChildren(article); panes.append(paperRoot);
       renderer = createReplyRenderer(article); renderer.render(tab.text);
     }
   } else if (tab.view === "edit") {
-    textarea(tab, "before", "旧文本", panes); textarea(tab, "after", "新文本", panes);
+    sourceEditor(tab, "before", "旧文本", panes); sourceEditor(tab, "after", "新文本", panes);
   } else {
     const surface = document.createElement("div"); surface.className = "diff-surface"; panes.append(surface);
     const data = diffFile(tab.name, tab.before, tab.after);
@@ -88,6 +94,7 @@ $("tabs-layout").onclick = () => {
   $("tabs-layout").setAttribute("aria-pressed", String(vertical));
 };
 function command(name) {
+  if (name === "undo" || name === "redo") editHistory(name);
   if (name === "new-tab") create("doc");
   if (name === "new-diff") create("diff");
   if (name === "close-tab") closeTab();

@@ -1,11 +1,13 @@
 # 第二轮：macOS 桌面化与视觉刷新验收
 
+本文是分轮历史验收记录。当前环境、构建、测试与安全更新流程以 [开发与交接](development.md) 为准，不依赖早期临时工具链或交接文件。
+
 实现分支：`integration/review-console-redesign`。审查基线：`e3c7a20`（实施前文档记录）。范围为 `.scratch/review-console-redesign/spec.md` 及其 10 个 Ticket；未接管旧插件、未接入日用会话、未发起模型调用。
 
 ## 交付
 
 - `dist-desktop/Review Console.app`：macOS arm64 本机可运行应用，mygo / WKWebView，随包 Node 22.23.2。
-- mygo 固定 `v0.7.4-0.20261029110259-0cb6d05d55b7`；Go 1.27.3。Go 仅解压在 `/tmp/lite-editor-toolchain/go`，没有修改全局工具链。
+- mygo 固定 `v0.7.4-0.20261029110259-0cb6d05d55b7`；初始验收使用隔离 Go 1.27.3，现已改用正常全局安装，见开发文档。
 - 两窗口共用后台服务；原生菜单、标签快捷键、关闭/退出保护、单实例会话交接已接入。`/review` 优先启动桌面应用，未发现应用时保留浏览器入口。
 - 最终产物为非 e2e 构建；即便设置 `MYGO_AUTOMATION` 也不暴露自动化套接字。`codesign --verify --deep --strict` 通过；本机 ad-hoc 签名，不是公网签名公证发行包。
 
@@ -78,10 +80,45 @@ npm run test:desktop
 npm run build:desktop  # 最终交付使用非自动化构建
 ```
 
-Go 不在 PATH 时，构建命令前指定 `GO_BINARY`。测试/截图会更新 `test-results/`，不提交生成产物。
+上面的逐步命令记录当时的验收过程；当前 `test:desktop` 自动构建独立测试包，完整流程见开发文档。测试/截图会更新 `test-results/`，不提交生成产物。
 
 - 新界面与四种主题/纸色：`test-results/redesign/`。
 - 真实桌面截图及结果：`test-results/desktop/result.json`、`review.png`、`scratch.png`。
 - 发布冒烟：`test-results/desktop/release.json`。
 - 既有视觉流程：`test-results/ui/`。
 - 最初接入探针和操作偏差记录：`.scratch/review-console-redesign/mygo-feasibility.md`。
+
+## 第四轮：源码编辑器与第三轮 review 收尾
+
+范围：`.scratch/review-console-polish/issues/02-editor-and-review-fixes.md`，同一对话实施和自审，无 subagent。
+
+- 修复浏览器 Add folder 未弹手输框、950px 初始布局多分配 20px、折叠后图标方向不更新。
+- 临时 Markdown 与 Diff 两侧输入改用现有 CodeMirror 依赖。软换行沿用 VS Code 的逻辑行语义，不新增折行行号；提供当前行高亮、选区、等宽源码与撤销。各标签独立保留 EditorState、选择、历史与滚动快照，不写盘。
+- 桌面 Undo/Redo 菜单转发到聚焦的 CodeMirror 历史，普通输入框回退 WebKit 原生撤销；其余编辑菜单保留原生行为。真实按键和菜单分别检查，不以浏览器快捷键代替。
+
+本轮执行通过：`npm run check`、`test:polish`（6 项）、`test:e2e`、`test:redesign`、`test:visual`、`test:diff`、真实 `test:desktop`。当时桌面测试在隔离源码副本构建运行，未在测试期间替换日用应用 backend；该副本不是后续开发前提。
+
+真实中文输入专项命令：
+
+```sh
+npm run test:desktop -- --ime=com.bytedance.inputmethod.doubaoime.pinyin
+```
+
+`--ime` 必须指定本机已启用的输入法 ID。该检查会在测试窗口临时切换输入法，结束后恢复原选择。本次实际使用豆包拼音：记录到 `compositionstart/update/end`，空格与数字确认 `你好`，Enter 按输入法自身规则提交 `zhongwen`，无额外换行、标签误切或焦点丢失；预览与上屏内容一致，撤销及重做通过。CodeMirror 可以合并连续组合输入为一条撤销记录，不自行改写其分组规则。没有宣称验收其他输入法或真实跨应用剪贴板。
+
+桌面测试脚本修正了两类自动化偏差：等待异步菜单命令完成、明确聚焦目标窗口后才发按键；系统“前往文件夹”输入用 AX 一次填入路径，避免快速按键被路径补全吞掉。原先焦点抖动不被直接认定为产品缺陷。
+
+证据更新在 `test-results/desktop/`：`result.json`、`ime.json`、`review.png`、`scratch.png`、`release-round4.json`。最终非 e2e 包通过签名校验；最小 PATH 下启动、无自动化套接字、退出后后台服务存活通过。随后正常关闭日用外壳，停止无活跃会话的旧服务，安装并启动新包；构建身份 `e5a080e7da20912d`，原有 2 个项目保留，输入法恢复 ABC。
+
+历史不明“报错”未复现，不据猜测修改代码；若再出现，先取得原始文案或截图。本轮没有剩余已确认的实现待办。
+
+## 历史提交读取性能修复
+
+票据：`.scratch/review-console-polish/issues/03-batch-commit-history.md`。只优化读取方式，未引入按需加载，未改变文件展开方式。
+
+- 原实现每个文件版本分别执行 `ls-tree`、`cat-file -s`、`cat-file blob`，31 文件提交串行启动 152 次 Git，约 2.5 秒；Node 其余处理约 16ms。
+- 改为 raw diff 批量获取两侧对象 ID、`cat-file --batch-check` 批量检查类型和大小、`cat-file --batch` 批量读取内容，继续计算并返回全部文件的 diff。每文件 2 MiB 上限、二进制/非 UTF-8 不可用提示、500 文件截断规则保留。
+- 同一个 31 文件提交后端实测 129–131ms、6 次 Git；5 个真实提交的新旧响应逐字段一致。无头 Chrome 请求由 2340ms 降至 121ms，仍返回全部 31 个 diff 和原有 317439 字节数据。
+- 新增公共 HTTP 接口回归，40 个不同内容文件要求全部 diff 正确且 Git 启动次数不超过 8；原实现实际 245 次，测试先失败后通过。另验证根提交、重命名及制表符/换行/中文路径、空文件、删除、二进制、无效 UTF-8、超限文件、跨项目子目录移动；既有合并父版本测试通过。
+- 执行通过：`npm run check`（9 项单测）、`test:e2e`、`test:redesign`、`test:polish`、`test:diff`。本次未重跑原生输入法专项，未改动前端或原生交互代码。
+- 最终非 e2e 桌面包通过签名校验，已正常替换并启动；安装后构建身份 `4dbeeb267f68338c`，实际接口 165ms 返回全部 31 个 diff。证据：`test-results/history/performance.json`、`installed.json`、`commit.png`。

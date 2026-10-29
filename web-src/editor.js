@@ -1,9 +1,52 @@
 import { EditorState, Compartment } from "@codemirror/state";
 import { EditorView, lineNumbers, keymap, highlightActiveLine } from "@codemirror/view";
-import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
+import { defaultKeymap, history, historyKeymap, indentWithTab, undo, redo } from "@codemirror/commands";
 import { syntaxHighlighting, defaultHighlightStyle } from "@codemirror/language";
 import { javascript } from "@codemirror/lang-javascript";
 import { markdown } from "@codemirror/lang-markdown";
+
+const editorTheme = EditorView.theme({
+  "&": { height: "100%", backgroundColor: "var(--background)", color: "var(--ink)", fontSize: "13px" },
+  ".cm-scroller": { fontFamily: "var(--mono)" },
+  ".cm-gutters": { backgroundColor: "var(--panel)", color: "var(--muted)", borderRight: "1px solid var(--border)" },
+  ".cm-cursor": { borderLeftColor: "var(--ink)" },
+  ".cm-activeLine": { backgroundColor: "color-mix(in srgb,var(--accent) 7%,transparent)" },
+});
+
+// The macOS menu consumes Cmd+Z before CodeMirror can see the keydown.
+export function editHistory(name) {
+  const view = EditorView.findFromDOM(document.activeElement);
+  if (view?.hasFocus) (name === "undo" ? undo : redo)(view);
+  else document.execCommand(name);
+}
+
+export function createScratchEditor(parent, { state, text, label, isMarkdown, onChange, scrollTo }) {
+  const view = new EditorView({
+    parent, scrollTo,
+    state: state || EditorState.create({
+      doc: text,
+      extensions: [
+        EditorState.lineSeparator.of(text.match(/\r\n|\r|\n/)?.[0] || "\n"),
+        isMarkdown ? markdown() : [], lineNumbers(), history(), highlightActiveLine(),
+        syntaxHighlighting(defaultHighlightStyle), EditorView.lineWrapping,
+        EditorView.contentAttributes.of({ "aria-label": label, spellcheck: "false" }),
+        keymap.of([indentWithTab, ...defaultKeymap, ...historyKeymap]),
+        EditorView.updateListener.of(update => { if (update.docChanged) onChange(update.state.sliceDoc()); }),
+        EditorView.theme({
+          "&": { backgroundColor: "var(--sheet)", fontSize: "12.5px" },
+          ".cm-scroller": { overflow: "auto", lineHeight: "1.75" },
+          ".cm-content": { padding: "12px 0" },
+          ".cm-line": { padding: "0 12px" },
+        }),
+        editorTheme,
+      ],
+    }),
+  });
+  return {
+    snapshot: () => ({ state: view.state, scrollTo: view.scrollSnapshot() }),
+    destroy: () => view.destroy(),
+  };
+}
 
 export function createFileEditor(parent, file, onSave, onChange) {
   const access = new Compartment();
@@ -23,13 +66,7 @@ export function createFileEditor(parent, file, onSave, onChange) {
         EditorView.contentAttributes.of({ "aria-label": "文件内容", tabindex: "0" }),
         keymap.of([{ key: "Mod-s", run: () => { onSave(); return true; } }, ...defaultKeymap, ...historyKeymap]),
         EditorView.updateListener.of(update => { if (update.docChanged) onChange(); }),
-        EditorView.theme({
-          "&": { height: "100%", backgroundColor: "var(--background)", color: "var(--ink)", fontSize: "13px" },
-          ".cm-scroller": { fontFamily: "var(--mono)" },
-          ".cm-gutters": { backgroundColor: "var(--panel)", color: "var(--muted)", borderRight: "1px solid var(--border)" },
-          ".cm-cursor": { borderLeftColor: "var(--ink)" },
-          ".cm-activeLine": { backgroundColor: "color-mix(in srgb,var(--accent) 7%,transparent)" },
-        }),
+        editorTheme,
       ],
     }),
   });

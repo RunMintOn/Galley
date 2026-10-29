@@ -200,4 +200,4 @@ html.dark .reply-pane[data-paper=ivory] { --paper: #f8f8f6; }
   .reply-pane #reading-state { display: none; }
 }
 @container reply (max-width: 420px) { .reply-pane .reply-header .brand { display: none; } .reply-pane .reply-header kbd { display: none; } .reply-pane .reply-header nav { margin-left: auto; } }
-@media (max-width: 1160px) { #console { --projects-width: 140px; --files-width: 190px; grid-template-columns: var(--projects-width) var(--files-width) minmax(260px,1fr) minmax(360px,470px); } }
+@media (max-width: 1160px) { #console { --projects-width: 140px; --files-width: 190px; --content-min-width: 260px; grid-template-columns: var(--projects-width) var(--files-width) minmax(260px,1fr) minmax(360px,470px); } }
