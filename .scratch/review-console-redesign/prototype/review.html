@@ -1,0 +1,1072 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark" data-font="mixed" data-paper="charcoal">
+<head>
+<meta charset="utf-8">
+<title>Lite Editor · 原型 v2</title>
+<style>
+/* ── tokens ─────────────────────────────────────────── */
+:root {
+  --ui: -apple-system, "SF Pro Text", "Helvetica Neue", system-ui, sans-serif;
+  --mono: "SF Mono", ui-monospace, "JetBrains Mono", Menlo, monospace;
+  --serif: "Charter", "Iowan Old Style", Palatino, serif;
+  --r-lg: 10px; --r-md: 8px; --r-sm: 6px; --r-xs: 4px;
+  --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 24px;
+  --dur: 120ms;
+  --c1: 196px; --c2: 248px;
+}
+html[data-theme="dark"] {
+  --bg: #090909; --rail: #0e0e0e; --rail-2: #101010;
+  --sheet: #181818; --raise: #202020; --hover: #242424; --sel: #2c2c2c;
+  --line: rgba(255,255,255,.065); --line-2: rgba(255,255,255,.12);
+  --ink: #ededed; --ink-2: #a8a8a8; --ink-3: #717171;
+  --add: #3ecf8e; --del: #f2555f;
+  --add-bg: #10241a; --del-bg: #2a1518;
+  --add-ink: #8fe3b6; --del-ink: #f4a3a7;
+  --accent: #b8b8b8;
+  --paper-charcoal: #1d1d1d; --paper-ink-charcoal: #ededed;
+  --paper-ivory: #f8f8f6; --paper-ink-ivory: #232323;
+}
+html[data-theme="light"] {
+  --bg: #ededed; --rail: #f8f8f8; --rail-2: #f3f3f3;
+  --sheet: #ffffff; --raise: #f9f9f9; --hover: #efefef; --sel: #e6e6e6;
+  --line: rgba(20,20,20,.08); --line-2: rgba(20,20,20,.14);
+  --ink: #1a1a1a; --ink-2: #545454; --ink-3: #8a8a8a;
+  --add: #0f8a4d; --del: #c93a45;
+  --add-bg: #e9f8f0; --del-bg: #fdedee;
+  --add-ink: #0b6b3c; --del-ink: #a52c36;
+  --accent: #5a5a5a;
+  --paper-charcoal: #f1f1f1; --paper-ink-charcoal: #1a1a1a;
+  --paper-ivory: #fcfcfa; --paper-ink-ivory: #232323;
+}
+html[data-paper="charcoal"] { --paper: var(--paper-charcoal); --paper-ink: var(--paper-ink-charcoal); }
+html[data-paper="ivory"] { --paper: var(--paper-ivory); --paper-ink: var(--paper-ink-ivory); }
+:root {
+  --paper-line: color-mix(in oklab, var(--paper-ink) 11%, transparent);
+  --paper-code: color-mix(in oklab, var(--paper-ink) 6%, var(--paper));
+  --paper-mute: color-mix(in oklab, var(--paper-ink) 45%, transparent);
+  --paper-hover: color-mix(in oklab, var(--paper-ink) 7%, transparent);
+}
+html[data-font="mono"] { --ui: var(--mono); }
+
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 12.5px/1.45 var(--ui);
+  -webkit-font-smoothing: antialiased; overflow: hidden;
+  display: flex; flex-direction: column;
+}
+button, select, input, textarea { font: inherit; color: inherit; }
+button {
+  border: 0; background: transparent; cursor: pointer; padding: 0; border-radius: var(--r-sm);
+  transition: background var(--dur) ease, color var(--dur) ease;
+}
+button:active { transform: scale(.985); }
+button:focus-visible, summary:focus-visible { outline: 1.5px solid var(--accent); outline-offset: 1px; }
+.num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.add { color: var(--add); } .del { color: var(--del); }
+.kbd { font: 10px/1 var(--mono); color: var(--ink-3); opacity: .8; }
+
+/* ── shell ──────────────────────────────────────────── */
+#app {
+  display: grid;
+  grid-template-columns: var(--c1) var(--c2) minmax(340px, 1fr) minmax(360px, 470px);
+  flex: 1; min-height: 0;
+}
+.pane { min-width: 0; display: flex; flex-direction: column; }
+.rail { background: var(--rail); border-right: 1px solid var(--line); }
+.rail--files { background: var(--rail-2); }
+.head {
+  height: 40px; min-height: 40px; display: flex; align-items: center;
+  gap: var(--s2); padding: 0 var(--s3);
+}
+.head .label {
+  font-size: 10.5px; font-weight: 650; letter-spacing: .075em;
+  text-transform: uppercase; color: var(--ink-3);
+}
+.head .count { font-family: var(--mono); font-size: 10.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.head .spacer { flex: 1; }
+.icon-btn {
+  width: 24px; height: 24px; display: grid; place-items: center; flex: none;
+  color: var(--ink-3); border-radius: var(--r-xs); font-size: 12px;
+}
+.icon-btn:hover { background: var(--hover); color: var(--ink-2); }
+.body { flex: 1; min-height: 0; overflow: auto; scrollbar-width: thin; }
+.foot {
+  height: 30px; min-height: 30px; display: flex; align-items: center; gap: 5px;
+  padding: 0 var(--s3); border-top: 1px solid var(--line);
+  font-size: 10.5px; color: var(--ink-3);
+}
+
+/* ── col 1 ──────────────────────────────────────────── */
+.project {
+  width: 100%; height: 54px; display: grid; grid-template-columns: 7px minmax(0,1fr) auto;
+  gap: var(--s2); align-items: center; padding: 0 var(--s3); border-radius: 0; text-align: left;
+}
+.project:hover { background: var(--hover); }
+.project[aria-current="true"] { background: var(--sel); }
+.project .dot { width: 7px; height: 7px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--line-2); }
+.project .dot.live { background: var(--add); box-shadow: none; }
+.project .name {
+  display: block; font-size: 12.5px; color: var(--ink-2);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.project[aria-current="true"] .name { color: var(--ink); }
+.project .meta {
+  display: block; margin-top: 2px; font: 10.5px/1.3 var(--mono); color: var(--ink-3);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.project .pending {
+  font: 10.5px/1 var(--mono); font-variant-numeric: tabular-nums;
+  color: var(--ink-2); padding: 3px 5px; border-radius: 5px; background: var(--hover);
+}
+.project[aria-current="true"] .pending { background: var(--raise); }
+.project .pending.zero { color: transparent; background: transparent; }
+.add-project {
+  display: flex; align-items: center; gap: var(--s2); width: 100%; height: 34px;
+  padding: 0 var(--s3); color: var(--ink-3); font-size: 12px;
+}
+.add-project .k { margin-left: auto; font: 10px/1 var(--mono); opacity: .6; }
+.add-project:hover { color: var(--ink-2); background: var(--hover); }
+.cursor-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--add); flex: none; }
+
+/* ── path cell ──────────────────────────────────────── */
+.path { display: flex; min-width: 0; font-family: var(--mono); font-size: 11.5px; }
+.path .dir { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-3); }
+.path .name { flex: none; white-space: nowrap; }
+
+/* ── col 2 ──────────────────────────────────────────── */
+.c2-head {
+  height: 40px; min-height: 40px; display: flex; align-items: center; gap: 6px;
+  padding: 0 var(--s3);
+}
+.c2-head .label { font-size: 10.5px; font-weight: 650; letter-spacing: .075em; text-transform: uppercase; color: var(--ink-3); }
+.c2-head .totals { margin-left: auto; display: flex; gap: 6px; font: 10.5px/1 var(--mono); }
+.section-label {
+  display: flex; align-items: center; gap: 6px;
+  padding: 10px var(--s3) 4px;
+  font-size: 10.5px; font-weight: 650; letter-spacing: .075em;
+  text-transform: uppercase; color: var(--ink-3);
+}
+.section-label .totals { margin-left: auto; display: flex; gap: 6px; font-weight: 400; letter-spacing: 0; }
+.entry {
+  width: 100%; height: 30px; display: grid; grid-template-columns: minmax(0,1fr) auto;
+  gap: var(--s2); align-items: center; padding: 0 var(--s3); border-radius: 0; text-align: left;
+  color: var(--ink-2);
+}
+.entry:hover { background: var(--hover); }
+.entry[aria-current="true"] { background: var(--sel); color: var(--ink); }
+.entry .stats { display: flex; gap: 6px; font-size: 10.5px; }
+.tree-divider { height: 1px; background: var(--line); margin: var(--s3) var(--s3) 0; }
+.tree-dir > summary {
+  list-style: none; cursor: pointer; display: flex; align-items: center; gap: 6px;
+  height: 26px; padding: 0 var(--s3) 0 calc(var(--s3) + 8px);
+  color: var(--ink-2); font-family: var(--mono); font-size: 11.5px;
+}
+.tree-dir > summary::-webkit-details-marker { display: none; }
+.tree-dir > summary:hover { background: var(--hover); }
+.tree-dir > summary::before {
+  content: ""; width: 4px; height: 4px; border-right: 1.2px solid var(--ink-3);
+  border-bottom: 1.2px solid var(--ink-3); transform: rotate(-45deg); flex: none;
+}
+.tree-dir[open] > summary::before { transform: rotate(45deg) translateY(-1px); }
+.tree-dir > div { padding-left: 12px; }
+.tree-file {
+  width: 100%; height: 26px; display: flex; align-items: center; gap: 6px;
+  padding: 0 var(--s3) 0 calc(var(--s3) + 20px);
+  font-family: var(--mono); font-size: 11.5px; color: var(--ink-2); text-align: left;
+}
+.tree-dir > div > .tree-file { padding-left: 0; }
+.tree-file:hover { background: var(--hover); }
+.tree-file[aria-current="true"] { background: var(--sel); color: var(--ink); }
+.tree-file .mark { width: 4px; height: 4px; border-radius: 50%; background: var(--add); margin-left: auto; flex: none; }
+
+/* 未提交 */
+.uncommitted {
+  margin: 0 var(--s3) var(--s2); padding: 8px var(--s2);
+  background: var(--raise); border: 1px solid var(--line); border-radius: var(--r-sm);
+}
+.uncommitted > summary {
+  list-style: none; cursor: pointer; display: flex; align-items: center; gap: 6px;
+  font-size: 11.5px; color: var(--ink-2);
+}
+.uncommitted > summary::-webkit-details-marker { display: none; }
+.uncommitted > summary .caret {
+  width: 0; height: 0; border-left: 4px solid var(--ink-3); border-block: 3px solid transparent;
+  transition: transform var(--dur) ease;
+}
+.uncommitted[open] > summary .caret { transform: rotate(90deg) translateX(-1px); }
+.uncommitted > summary .totals { margin-left: auto; display: flex; gap: 6px; font: 10px/1 var(--mono); }
+.uncommitted .ufile {
+  display: flex; align-items: center; gap: 6px; width: 100%;
+  padding: 5px 0 0 12px; font-family: var(--mono); font-size: 11px; color: var(--ink-2); text-align: left;
+}
+.uncommitted .ufile:hover { color: var(--ink); }
+.uncommitted .ufile .stats { margin-left: auto; display: flex; gap: 6px; font-size: 10px; }
+
+/* col2 commit rows（窄，两行） */
+.crow {
+  width: 100%; display: block; padding: 6px var(--s3); text-align: left; border-radius: 0;
+}
+.crow:hover { background: var(--hover); }
+.crow[aria-current="true"] { background: var(--sel); }
+.crow .subj {
+  font-size: 11.5px; color: var(--ink-2);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.crow[aria-current="true"] .subj { color: var(--ink); }
+.crow .foot2 {
+  display: flex; align-items: center; gap: 6px; margin-top: 2px;
+  font: 10px/1 var(--mono); color: var(--ink-3);
+}
+.crow .foot2 .stats { margin-left: auto; display: flex; gap: 6px; }
+
+/* ── col 3 ──────────────────────────────────────────── */
+.content-pane { background: var(--bg); padding: var(--s3); }
+.sheet {
+  flex: 1; min-height: 0; display: flex; flex-direction: column;
+  background: var(--sheet); border: 1px solid var(--line-2);
+  border-radius: var(--r-lg); overflow: hidden;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.045);
+}
+html[data-theme="light"] .sheet {
+  box-shadow: 0 1px 2px rgba(17,24,34,.05), inset 0 1px 0 #fff;
+  border-color: rgba(17,24,34,.09);
+}
+.sheet-head {
+  min-height: 40px; display: flex; align-items: center; gap: 7px;
+  padding: 0 var(--s3); border-bottom: 1px solid var(--line);
+  flex-wrap: wrap;
+}
+.sheet-head .file {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-family: var(--mono); font-size: 12px; color: var(--ink);
+}
+.sheet-head .stats { display: flex; gap: 6px; font-size: 11px; flex: none; }
+.sheet-head .counter { font: 10.5px/1 var(--mono); color: var(--ink-3); flex: none; }
+.sheet-head .grow { flex: 1; }
+.seg { display: inline-flex; padding: 2px; gap: 2px; background: var(--raise); border-radius: var(--r-sm); flex: none; }
+.seg button { font-size: 10.5px; padding: 2px 8px; color: var(--ink-3); border-radius: 4px; white-space: nowrap; }
+.seg button[aria-pressed="true"] { background: var(--sel); color: var(--ink); }
+.seg button[disabled] { opacity: .35; cursor: default; }
+.wrap-toggle {
+  display: inline-flex; align-items: center; gap: 5px; flex: none;
+  font-size: 10.5px; color: var(--ink-3);
+}
+.wrap-toggle input {
+  appearance: none; width: 12px; height: 12px; margin: 0; flex: none;
+  border: 1.2px solid var(--line-2); border-radius: 3px; display: grid; place-items: center;
+}
+.wrap-toggle input:checked { background: var(--ink-2); border-color: var(--ink-2); }
+.wrap-toggle input:checked::after {
+  content: ""; width: 6px; height: 3px; border-left: 1.6px solid var(--sheet);
+  border-bottom: 1.6px solid var(--sheet); transform: rotate(-45deg) translateY(-1px);
+}
+.sheet-body { flex: 1; min-height: 0; overflow: auto; scrollbar-width: thin; }
+.sheet-foot {
+  height: 30px; min-height: 30px; display: flex; align-items: center; gap: var(--s2);
+  padding: 0 var(--s3); border-top: 1px solid var(--line);
+  font-size: 10.5px; color: var(--ink-3);
+}
+.sheet-foot .grow { flex: 1; }
+
+/* ── user messages ───────────────────────────────── */
+.umsgs { border-bottom: 1px solid var(--line); }
+.umsgs > summary {
+  list-style: none; cursor: pointer; display: flex; align-items: center; gap: 7px;
+  padding: 9px var(--s3); font-size: 11.5px; color: var(--ink-2);
+}
+.umsgs > summary::-webkit-details-marker { display: none; }
+.umsgs > summary:hover { background: var(--hover); }
+.umsgs > summary .caret {
+  width: 0; height: 0; flex: none;
+  border-left: 4px solid var(--ink-3); border-block: 3px solid transparent;
+  transition: transform var(--dur) ease;
+}
+.umsgs[open] > summary .caret { transform: rotate(90deg) translateX(-1px); }
+.umsgs > summary .n { font: 10.5px/1 var(--mono); color: var(--ink-3); }
+.umsgs > summary .grow { flex: 1; }
+.umsgs .list { padding: 0 var(--s3) 10px; display: flex; flex-direction: column; gap: 7px; }
+.umsgs .msg {
+  padding: 8px 11px; background: var(--raise); border-radius: var(--r-sm);
+  font-size: 12px; line-height: 1.55; color: var(--ink-2); text-wrap: pretty;
+}
+.umsgs .msg .t { font: 10px/1 var(--mono); color: var(--ink-3); margin-right: 8px; }
+
+/* ── diff ───────────────────────────────────────────── */
+.hunk-bar {
+  display: flex; align-items: center; gap: var(--s2);
+  padding: 6px var(--s3); background: var(--raise);
+  border-block: 1px solid var(--line);
+  font: 10.5px/1 var(--mono); color: var(--ink-3);
+}
+.hunk-bar .grow { flex: 1; }
+.diff-wrap { width: max-content; min-width: 100%; font: 12px/1.75 var(--mono); padding-block: 2px; }
+.row { display: grid; grid-template-columns: 40px 40px 18px minmax(max-content,1fr); min-height: 21px; }
+.row .ln {
+  color: var(--ink-3); opacity: .7; text-align: right; padding-right: 7px;
+  font-size: 10.5px; line-height: 21px; user-select: none; font-variant-numeric: tabular-nums;
+}
+.row .sign { text-align: center; line-height: 21px; color: var(--ink-3); user-select: none; }
+.row .code { white-space: pre; padding-left: 8px; padding-right: var(--s4); color: var(--ink-2); }
+.row.add { background: var(--add-bg); }
+.row.add .code { color: var(--add-ink); }
+.row.add .sign { color: var(--add); }
+.row.del { background: var(--del-bg); }
+.row.del .code { color: var(--del-ink); }
+.row.del .sign { color: var(--del); }
+.row.add .ln, .row.del .ln { opacity: .85; }
+.hl { border-radius: 2px; }
+.hl-add { background: #1b4631; }
+.hl-del { background: #54262b; }
+html[data-theme="light"] .hl-add { background: #c6ecd8; }
+html[data-theme="light"] .hl-del { background: #f7cfd3; }
+.skip {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 5px 0; font: 10.5px/1 var(--mono); color: var(--ink-3);
+  background: var(--raise); border-block: 1px solid var(--line);
+}
+.split-wrap { width: max-content; min-width: 100%; font: 12px/1.75 var(--mono); padding-block: 2px; }
+.srow { display: grid; grid-template-columns: 1fr 1fr; }
+.side { display: grid; grid-template-columns: 40px 1fr; min-height: 21px; }
+.side + .side { border-left: 1px solid var(--line); }
+.side .ln {
+  color: var(--ink-3); opacity: .7; text-align: right; padding-right: 7px;
+  font-size: 10.5px; line-height: 21px; user-select: none; font-variant-numeric: tabular-nums;
+}
+.side .code { white-space: pre; padding-left: 8px; padding-right: var(--s4); color: var(--ink-2); }
+.side.add { background: var(--add-bg); }
+.side.add .code { color: var(--add-ink); }
+.side.del { background: var(--del-bg); }
+.side.del .code { color: var(--del-ink); }
+.side.void { background: transparent; }
+.wrapped .split-wrap { width: auto; }
+.wrapped .srow { grid-template-columns: 1fr 1fr; }
+.wrapped .side .code { white-space: pre-wrap; overflow-wrap: anywhere; }
+
+.wrapped .row .code { white-space: pre-wrap; overflow-wrap: anywhere; }
+.wrapped .row { grid-template-columns: 40px 40px 18px 1fr; }
+
+/* ── commit detail ──────────────────────────────────── */
+.commit-card {
+  margin: var(--s3); padding: var(--s3) var(--s4);
+  background: var(--raise); border: 1px solid var(--line); border-radius: var(--r-md);
+  display: grid; grid-template-columns: 30px minmax(0,1fr) auto; gap: var(--s3); align-items: start;
+}
+.avatar {
+  width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--sel); color: var(--ink-2); font: 650 12.5px/1 var(--ui);
+}
+.commit-card .subject { font-size: 13px; color: var(--ink); line-height: 1.42; text-wrap: balance; }
+.commit-card .meta {
+  margin-top: 4px; display: flex; align-items: center; gap: 7px; flex-wrap: wrap;
+  font-size: 11px; color: var(--ink-3);
+}
+.commit-card .meta .sha {
+  font-family: var(--mono); font-size: 10.5px; padding: 1px 5px;
+  border-radius: 4px; background: var(--sel); color: var(--ink-2);
+}
+.sep { width: 2px; height: 2px; border-radius: 50%; background: var(--ink-3); opacity: .55; }
+.commit-total {
+  display: flex; gap: 7px; font: 11.5px/1 var(--mono); font-variant-numeric: tabular-nums;
+  padding: 4px 8px; border-radius: 5px; background: var(--sheet); border: 1px solid var(--line);
+}
+.commit-files { padding: 0 var(--s3); display: flex; flex-direction: column; gap: 6px; }
+.commit-file {
+  display: grid; grid-template-columns: minmax(0,1fr) auto; gap: var(--s3);
+  align-items: center; height: 34px; padding: 0 var(--s3);
+  background: var(--sheet); border: 1px solid var(--line); border-radius: var(--r-sm);
+  transition: opacity var(--dur) ease, background var(--dur) ease;
+}
+.commit-file:hover { background: var(--raise); }
+.commit-file.is-viewed { opacity: .45; }
+.commit-file .fstats { display: flex; gap: 7px; font: 10.5px/1 var(--mono); }
+.viewed { display: flex; align-items: center; gap: 5px; cursor: pointer; font-size: 10.5px; color: var(--ink-3); user-select: none; }
+.viewed input {
+  appearance: none; width: 13px; height: 13px; margin: 0; flex: none;
+  border: 1.2px solid var(--line-2); border-radius: 3.5px; display: grid; place-items: center;
+}
+.viewed input:checked { background: var(--ink-2); border-color: var(--ink-2); }
+.viewed input:checked::after {
+  content: ""; width: 6px; height: 3px; border-left: 1.6px solid var(--sheet);
+  border-bottom: 1.6px solid var(--sheet); transform: rotate(-45deg) translateY(-1px);
+}
+.diff-block { margin-top: 2px; border: 1px solid var(--line); border-radius: var(--r-sm); overflow: hidden; background: var(--sheet); }
+.diff-block .hunk-bar:first-child { border-top: 0; }
+
+/* ── reply pane ─────────────────────────────────────── */
+.reply-pane {
+  background: var(--paper); color: var(--paper-ink);
+  border-left: 1px solid var(--line-2);
+  container-type: inline-size; container-name: reply;
+}
+.rp-head {
+  min-height: 44px; display: flex; align-items: center; gap: 10px;
+  padding: 0 14px; border-bottom: 1px solid var(--paper-line);
+}
+.rp-head .brand {
+  display: flex; align-items: center; gap: 7px;
+  font: 500 11.5px/1 var(--mono); color: var(--paper-ink); white-space: nowrap;
+}
+.rp-head .brand .glyph { width: 9px; height: 9px; background: var(--paper-ink); border-radius: 1.5px; flex: none; }
+.rp-head .title {
+  font-size: 11.5px; color: var(--paper-mute); white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; min-width: 0;
+}
+.rp-head .nav { margin-left: auto; display: flex; align-items: center; gap: 12px; flex: none; }
+.rp-link { font-size: 11px; color: var(--paper-mute); white-space: nowrap; }
+.rp-link:hover { color: var(--paper-ink); }
+.rp-link[aria-pressed="true"] { color: var(--paper-ink); }
+.rp-key {
+  font: 10px/1 var(--mono); color: var(--paper-mute);
+  border: 1px solid var(--paper-line); border-radius: 4px; padding: 4px 7px; white-space: nowrap;
+}
+.rp-icon {
+  width: 24px; height: 24px; display: grid; place-items: center; border-radius: var(--r-xs);
+  color: var(--paper-mute); font-size: 13px; flex: none;
+}
+.rp-icon:hover { background: var(--paper-hover); color: var(--paper-ink); }
+.rp-paper {
+  display: flex; align-items: center; gap: 5px; padding: 4px 7px; border-radius: var(--r-xs);
+  font: 11px/1 var(--mono); color: var(--paper-mute); white-space: nowrap;
+}
+.rp-paper:hover { background: var(--paper-hover); color: var(--paper-ink); }
+.rp-strip {
+  display: flex; align-items: center; gap: 8px; padding: 7px 14px;
+  border-bottom: 1px solid var(--paper-line);
+  font: 10.5px/1 var(--mono); color: var(--paper-mute);
+}
+.rp-strip .tag {
+  padding: 3px 6px; border-radius: 4px;
+  background: color-mix(in oklab, var(--paper-ink) 6.5%, transparent);
+  color: color-mix(in oklab, var(--paper-ink) 62%, transparent);
+}
+.rp-strip .pager { display: inline-flex; align-items: center; gap: 3px; }
+.rp-strip .pager b { color: var(--paper-ink); font-weight: 400; }
+.rp-strip .navbtn {
+  width: 18px; height: 18px; display: grid; place-items: center; border-radius: 3px;
+  color: var(--paper-mute); font-size: 11px;
+}
+.rp-strip .navbtn:hover { background: var(--paper-hover); color: var(--paper-ink); }
+.rp-strip .state { margin-left: auto; display: flex; align-items: center; gap: 5px; }
+.rp-strip .state .dot { width: 5px; height: 5px; border-radius: 50%; background: #4c9e6e; }
+.doc { padding: 30px 32px 72px; font: 16.5px/1.72 var(--serif); }
+.doc h1 { font-size: 23px; line-height: 1.3; margin: 0 0 18px; font-weight: 600; letter-spacing: -.008em; }
+.doc .meta-line {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 18px;
+  font: 10.5px/1 var(--mono); color: var(--paper-mute);
+}
+.doc .meta-line .swatch { width: 9px; height: 9px; background: #d9c53f; border-radius: 1px; }
+.doc p { margin: 0 0 17px; text-wrap: pretty; }
+.doc code { font: 12.5px/1.5 var(--mono); background: var(--paper-code); padding: 1px 5px; border-radius: 4px; }
+.doc .link {
+  display: flex; align-items: center; gap: 10px; margin: 0 0 17px;
+  padding: 9px 12px; border: 1px solid var(--paper-line); border-radius: var(--r-sm);
+  background: var(--paper-code); font: 11.5px/1 var(--mono);
+  color: color-mix(in oklab, var(--paper-ink) 80%, transparent);
+}
+.doc .link .grow { flex: 1; }
+.doc .link .stats { display: flex; gap: 7px; }
+.doc pre {
+  margin: 0 0 17px; padding: 11px 14px; background: var(--paper-code);
+  border: 1px solid var(--paper-line); border-radius: var(--r-sm);
+  font: 12px/1.66 var(--mono); overflow-x: auto;
+}
+.fig {
+  margin: 0 0 17px; border: 1px solid var(--paper-line); border-radius: var(--r-sm);
+  background: var(--paper-code); overflow: hidden;
+}
+.fig .cap { display: flex; padding: 6px 12px; border-bottom: 1px solid var(--paper-line); font: 10px/1 var(--mono); color: var(--paper-mute); }
+.fig .cap .grow { flex: 1; }
+.fig .stage { display: flex; align-items: center; justify-content: center; gap: 9px; padding: 24px 16px; }
+.fig .node {
+  padding: 7px 12px; border-radius: 5px; font: 11.5px/1 var(--mono); white-space: nowrap;
+  background: color-mix(in oklab, var(--paper-ink) 8%, transparent);
+  color: color-mix(in oklab, var(--paper-ink) 74%, transparent);
+}
+.fig .arw { color: color-mix(in oklab, var(--paper-ink) 30%, transparent); }
+.compose {
+  display: flex; align-items: center; gap: var(--s3); padding: 10px 14px;
+  border-top: 1px solid var(--paper-line); font-size: 12.5px; color: var(--paper-mute);
+}
+.compose .send { margin-left: auto; font: 10px/1 var(--mono); }
+@container reply (max-width: 430px) {
+  .doc { padding: 24px 20px 56px; font: 15.5px/1.7 var(--serif); }
+  .doc h1 { font-size: 20px; margin-bottom: 15px; }
+  .rp-key { display: none; }
+}
+
+/* ── proto bar（不属于设计）─────────────────────────── */
+#proto {
+  order: -1; flex: none; z-index: 99;
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  padding: 7px 12px; border-bottom: 1px solid rgba(255,255,255,.12);
+  background: #0d0d0d; font: 10.5px/1 var(--ui); color: #b8b8b8;
+}
+#proto .tag { color: #5e5e5e; letter-spacing: .08em; text-transform: uppercase; font-weight: 650; margin-right: 2px; }
+#proto .grp { display: flex; align-items: center; gap: 4px; }
+#proto .grp > span { color: #6a6a6a; margin-right: 2px; }
+#proto button { padding: 4px 8px; border-radius: 5px; color: #b8b8b8; border: 1px solid rgba(255,255,255,.09); }
+#proto button[aria-pressed="true"] { background: rgba(255,255,255,.17); color: #fff; border-color: transparent; }
+#proto .hint { color: #505050; }
+</style>
+</head>
+<body>
+
+<div id="proto">
+  <span class="tag">Prototype</span>
+  <div class="grp"><span>Theme</span>
+    <button data-k="theme" data-v="dark" aria-pressed="true">Dark</button>
+    <button data-k="theme" data-v="light" aria-pressed="false">Light</button>
+  </div>
+  <div class="grp"><span>Type</span>
+    <button data-k="font" data-v="mixed" aria-pressed="true">Mixed</button>
+    <button data-k="font" data-v="mono" aria-pressed="false">All mono</button>
+  </div>
+  <div class="grp"><span>View</span>
+    <button data-k="view" data-v="review" aria-pressed="true">Review</button>
+    <button data-k="view" data-v="git" aria-pressed="false">Git</button>
+  </div>
+  <span class="hint">纸色在右栏自己的下拉里</span>
+</div>
+
+<div id="app">
+  <section class="pane rail">
+    <div class="head">
+      <span class="label">Projects</span><span class="count">15</span>
+      <span class="spacer"></span><button class="icon-btn" title="Add project">+</button>
+    </div>
+    <div class="body" id="projects"></div>
+    <div class="foot"><span class="cursor-dot"></span>watching<span style="opacity:.55">·</span>2s ago</div>
+  </section>
+
+  <section class="pane rail rail--files" id="col2"></section>
+
+  <section class="pane content-pane">
+    <div class="sheet">
+      <div class="sheet-head" id="sheet-head"></div>
+      <div class="sheet-body" id="sheet-body"></div>
+      <div class="sheet-foot" id="sheet-foot"></div>
+    </div>
+  </section>
+
+  <section class="pane reply-pane">
+    <div class="rp-head">
+      <span class="brand"><span class="glyph"></span>Visual Reply</span>
+      <span class="nav">
+        <button class="rp-link" id="show-source" aria-pressed="false">Show source</button>
+        <span class="rp-key">⌘/Ctrl + Enter</span>
+        <button class="rp-icon" title="App theme">☀</button>
+        <button class="rp-paper" id="paper-btn">Charcoal ⌄</button>
+      </span>
+    </div>
+    <div class="rp-strip">
+      <span>01a18232</span>
+      <span class="pager">
+        <button class="navbtn">‹</button>
+        <span><b>17</b> / 17</span>
+        <button class="navbtn">›</button>
+      </span>
+      <span>Latest reply</span>
+      <span class="state"><span class="dot"></span>Idle</span>
+      <span>Input</span>
+    </div>
+    <div class="body doc" id="reply-body">
+      <div class="meta-line"><span class="swatch"></span>893 words<span>|</span>16:41</div>
+      <h1>折叠的 hunk 现在会被画出来</h1>
+      <p>之前 <code>collapsed</code> 的分支直接跳过，被折叠掉的那段改动完全不显示，你只能看到「还有 N 行没展开」却没法展开。现在先测量再绘制。</p>
+      <div class="link">
+        <span>src/diffview.go</span><span class="grow"></span>
+        <span class="stats"><span class="add">+7</span><span class="del">−2</span></span>
+        <span style="opacity:.35">↵</span>
+      </div>
+      <p>另外把滚动位置的计算拆成两步，避免每帧重算整张表：</p>
+      <pre>v.hunkTop = make([]int, len(v.hunks)+1)
+v.hunksDirty = false</pre>
+      <div class="fig">
+        <div class="cap"><span>mermaid</span><span class="grow"></span><span>fit&nbsp;&nbsp;+&nbsp;&nbsp;−</span></div>
+        <div class="stage">
+          <span class="node">tool call</span><span class="arw">→</span>
+          <span class="node">snapshot</span><span class="arw">→</span>
+          <span class="node">diff</span>
+        </div>
+      </div>
+      <p>验证：切换文件不会制造未保存修改；原文仅用于临时预览。</p>
+    </div>
+    <div class="compose"><span>Reply to this session…</span><span class="send">↵ send</span></div>
+  </section>
+</div>
+
+<script>
+/* ── data ─────────────────────────────────────────────── */
+const projects = [
+  { name: "proj-a-mayoi", branch: "blur-fix", pending: 3, live: true, current: true },
+  { name: "harness", branch: "main", pending: 7, live: true },
+  { name: "ego-site", branch: "feat/hero", pending: 1, live: true },
+  { name: "dotfiles", branch: "main", pending: 0 },
+  { name: "review-console", branch: "integration/review-console", pending: 2, live: true },
+  { name: "notes", branch: "main", pending: 0 },
+  { name: "mygo-fork", branch: "main", pending: 0 },
+  { name: "ssh-pi-host", branch: "main", pending: 2 },
+  { name: "mayoi", branch: "main", pending: 0 },
+  { name: "zellij-cfg", branch: "main", pending: 0 },
+  { name: "obsidian-vault", branch: "main", pending: 0 },
+  { name: "gh-scratch", branch: "main", pending: 0 },
+  { name: "project-13", branch: "main", pending: 0 },
+  { name: "project-14", branch: "main", pending: 0 },
+  { name: "project-15", branch: "main", pending: 0 },
+];
+
+/* 本轮（快照法） */
+const round = {
+  files: [
+    { path: "src/diffview.go", add: 7, del: 2, current: true },
+    { path: "src/search.go", add: 1, del: 1 },
+    { path: "README.md", add: 2, del: 0 },
+  ],
+  from: "14:02", to: "14:31",
+};
+
+/* 未提交（git status） */
+const uncommitted = [
+  { path: "web-src/app.js", add: 2, del: 0, status: "M" },
+];
+
+const userMessages = [
+  { t: "14:02", text: "折叠的 hunk 能不能直接画出来？现在整个跳过了，我根本看不到那段改了什么。" },
+  { t: "14:27", text: "顺便把滚动位置的计算拆开，别每帧重算整张表。" },
+];
+
+const tree = [
+  { dir: "cmd", files: ["main.go"] },
+  { dir: "internal/diff", open: true, files: ["diff.go", "diffview.go", "words.go"] },
+  { dir: "internal/git", files: ["git.go", "sort.go"] },
+  { dir: "internal/highlight", files: ["highlight.go"] },
+  { dir: "src", files: ["app.go", "editor.go", "search.go"] },
+  { plain: ["go.mod", "README.md"] },
+];
+
+const diffRows = [
+  { hunk: "@@ -1,18 +1,23 @@" },
+  { a: 1, b: 1, t: "    package main" },
+  { a: 2, b: 2, t: "" },
+  { a: 3, b: 3, t: "    func (v *DiffView) draw() {" },
+  { a: 4, b: 4, t: "        y := 0" },
+  { a: 5, b: 5, t: "        for _, h := range v.hunks {" },
+  { a: 6, b: 6, t: "            if h.collapsed {" },
+  { a: 7, b: 7, k: "add", t: "                v.drawCollapsed(h)" },
+  { a: 7, b: 8, t: "                continue" },
+  { a: 8, b: 9, t: "            }" },
+  { a: 9, b: 10, t: "            v.drawHunk(h)" },
+  { a: 10, b: 11, k: "del", t: "            v.updateScroll()" },
+  { a: 11, b: 12, k: "add", t: "            v.measure(h)" },
+  { a: 12, b: 13, k: "add", t: "            v.updateScroll(h)" },
+  { a: 13, b: 14, k: "add", t: "            v.markDirty()" },
+  { a: 11, b: 15, t: "        }" },
+  { a: 12, b: 16, t: "    }" },
+  { a: 13, b: 17, t: "" },
+  { skip: 24 },
+  { hunk: "@@ -42,3 +49,5 @@" },
+  { a: 42, b: 49, t: "    v.rowH = v.fontSize * 1.45" },
+  { a: 43, b: 50, k: "add", t: "    v.hunkTop = make([]int, len(v.hunks)+1)" },
+  { a: 44, b: 51, k: "add", t: "    v.hunksDirty = false" },
+  { a: 45, b: 52, t: "}" },
+];
+
+const commits = [
+  { hash: "ed101c0", subject: "fix(diff): 绘制折叠的 hunk", when: "13:40", date: "Today", files: [
+    { path: "internal/diff/diffview.go", add: 12, del: 3, viewed: true },
+    { path: "internal/diff/diff_test.go", add: 7, del: 4, viewed: false },
+    { path: "docs/ui-verification.md", add: 4, del: 1, viewed: false },
+    { path: "web-src/style.css", add: 1, del: 1, viewed: false },
+  ]},
+  { hash: "4886809", subject: "refactor(diff): 拆出 measure 与 updateScroll", when: "12:05", date: "Today", files: [
+    { path: "internal/diff/diffview.go", add: 24, del: 18, viewed: false },
+    { path: "internal/diff/measure.go", add: 14, del: 3, viewed: false },
+  ]},
+  { hash: "f8b5060", subject: "feat(search): 支持正则", when: "22:18", date: "Yesterday", files: [
+    { path: "internal/search/query.go", add: 96, del: 3, viewed: false },
+    { path: "internal/search/query_test.go", add: 16, del: 1, viewed: false },
+  ]},
+  { hash: "6ac21d4", subject: "test(diff): 折叠区测量回归", when: "18:44", date: "Yesterday", files: [
+    { path: "internal/diff/fold_test.go", add: 96, del: 3, viewed: false },
+  ]},
+  { hash: "802b051", subject: "init: 项目结构", when: "20:02", date: "10/27", files: [
+    { path: "go.mod", add: 40, del: 0, viewed: false },
+    { path: "cmd/mayoi/main.go", add: 1800, del: 0, viewed: false },
+  ]},
+];
+
+commits.forEach((c) => {
+  c.add = c.files.reduce((n, f) => n + f.add, 0);
+  c.del = c.files.reduce((n, f) => n + f.del, 0);
+});
+
+/* ── utils ────────────────────────────────────────────── */
+const el = (tag, cls, html) => {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (html != null) n.innerHTML = html;
+  return n;
+};
+const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+const stats = (a, d) => `<span class="add num">+${a}</span>` + (d ? `<span class="del num">−${d}</span>` : "");
+const sum = (arr) => arr.reduce((o, f) => ({ a: o.a + f.add, d: o.d + f.del }), { a: 0, d: 0 });
+const pathCell = (p) => {
+  const i = p.lastIndexOf("/");
+  if (i < 0) return `<span class="path"><span class="name">${esc(p)}</span></span>`;
+  return `<span class="path"><span class="dir">${esc(p.slice(0, i + 1))}</span><span class="name">${esc(p.slice(i + 1))}</span></span>`;
+};
+
+const state = { view: "review", commit: 0, changedMode: "flat", wrap: false, source: false, layout: "unified" };
+
+/* ── col 1 ────────────────────────────────────────────── */
+const projHost = document.getElementById("projects");
+projects.forEach((p) => {
+  const b = el("button", "project");
+  if (p.current) b.setAttribute("aria-current", "true");
+  b.innerHTML =
+    `<span class="dot ${p.live ? "live" : ""}"></span>` +
+    `<span style="min-width:0"><span class="name">${esc(p.name)}</span><span class="meta">${esc(p.branch)}</span></span>` +
+    `<span class="pending ${p.pending ? "" : "zero"}">${p.pending || 0}</span>`;
+  projHost.appendChild(b);
+});
+projHost.appendChild(el("button", "add-project", `<span>+</span><span>Add folder</span><span class="k">⌘O</span>`));
+
+/* ── col 2 ────────────────────────────────────────────── */
+function renderCol2() {
+  const c2 = document.getElementById("col2");
+  c2.innerHTML = "";
+
+  if (state.view === "review" || state.view === "source") {
+    const t = sum(round.files);
+    const head = el("div", "c2-head");
+    head.innerHTML =
+      `<span class="label">Changed</span><span class="count">${round.files.length} files</span>` +
+      `<span class="totals">${stats(t.a, t.d)}</span>`;
+    c2.appendChild(head);
+
+    const bar = el("div", "section-label");
+    bar.innerHTML =
+      `<span>this round</span>` +
+      `<span class="totals">` +
+      `<span class="seg" id="flat-toggle">` +
+      `<button data-m="flat" aria-pressed="${state.changedMode === "flat"}">Flat</button>` +
+      `<button data-m="tree" aria-pressed="${state.changedMode === "tree"}">Tree</button></span>` +
+      `</span>`;
+    c2.appendChild(bar);
+
+    const listHost = el("div");
+    if (state.changedMode === "flat") {
+      round.files.forEach((f) => {
+        const b = el("button", "entry");
+        if (f.current) b.setAttribute("aria-current", "true");
+        b.innerHTML = pathCell(f.path) + `<span class="stats">${stats(f.add, f.del)}</span>`;
+        listHost.appendChild(b);
+      });
+    } else {
+      const groups = {};
+      round.files.forEach((f) => {
+        const i = f.path.lastIndexOf("/");
+        const dir = i < 0 ? "./" : f.path.slice(0, i + 1);
+        (groups[dir] = groups[dir] || []).push(f);
+      });
+      Object.keys(groups).forEach((dir) => {
+        const d = el("details", "tree-dir");
+        d.open = true;
+        d.innerHTML = `<summary>${esc(dir)}</summary><div></div>`;
+        const inner = d.querySelector("div");
+        groups[dir].forEach((f) => {
+          const name = f.path.slice(dir.length);
+          const b = el("button", "tree-file", esc(name) + `<span class="mark"></span>`);
+          if (f.current) b.setAttribute("aria-current", "true");
+          b.style.paddingLeft = "0";
+          inner.appendChild(b);
+        });
+        listHost.appendChild(d);
+      });
+    }
+    c2.appendChild(listHost);
+
+    const toggle = el("div", "section-label");
+    toggle.innerHTML = `<span>files</span>`;
+    c2.appendChild(toggle);
+
+    const treeHost = el("div", "body");
+    treeHost.style.flex = "none";
+    treeHost.style.overflow = "visible";
+    tree.forEach((node) => {
+      if (node.plain) {
+        node.plain.forEach((f) => treeHost.appendChild(
+          el("button", "tree-file", esc(f) + (f === "README.md" ? '<span class="mark"></span>' : ""))));
+        return;
+      }
+      const d = el("details", "tree-dir");
+      if (node.open) d.open = true;
+      d.innerHTML = `<summary>${esc(node.dir)}</summary><div></div>`;
+      const inner = d.querySelector("div");
+      node.files.forEach((f) => {
+        const b = el("button", "tree-file", esc(f) + (f === "diffview.go" ? '<span class="mark"></span>' : ""));
+        if (f === "diffview.go") b.setAttribute("aria-current", "true");
+        inner.appendChild(b);
+      });
+      treeHost.appendChild(d);
+    });
+    c2.appendChild(treeHost);
+
+    const spacer = el("div");
+    spacer.style.flex = "1";
+    c2.appendChild(spacer);
+    c2.appendChild(el("div", "foot", `<span class="kbd">j</span><span class="kbd">k</span> move`));
+    return;
+  }
+
+  /* Git 模式 */
+  const head = el("div", "c2-head");
+  head.innerHTML = `<span class="label">Git</span><span class="count">blur-fix</span>`;
+  c2.appendChild(head);
+
+  const u = sum(uncommitted);
+  const det = el("details", "uncommitted");
+  det.open = true;
+  det.innerHTML =
+    `<summary><span class="caret"></span>Uncommitted<span class="totals">${stats(u.a, u.d)}</span></summary>`;
+  uncommitted.forEach((f) => {
+    det.appendChild(el("button", "ufile",
+      pathCell(f.path) + `<span class="stats">${stats(f.add, f.del)}</span>`));
+  });
+  c2.appendChild(det);
+
+  const bodyHost = el("div", "body");
+  let lastDate = "";
+  commits.forEach((c, i) => {
+    if (c.date !== lastDate) {
+      lastDate = c.date;
+      bodyHost.appendChild(el("div", "section-label", c.date));
+    }
+    const b = el("button", "crow");
+    if (i === state.commit) b.setAttribute("aria-current", "true");
+    b.dataset.i = i;
+    b.innerHTML =
+      `<span class="subj">${esc(c.subject)}</span>` +
+      `<span class="foot2"><span>${c.hash}</span><span>${c.when}</span>` +
+      `<span class="stats">${stats(c.add, c.del)}</span></span>`;
+    bodyHost.appendChild(b);
+  });
+  c2.appendChild(bodyHost);
+  c2.appendChild(el("div", "foot", `<span>5 commits</span><span style="flex:1"></span><span>HEAD</span>`));
+}
+
+/* ── diff ─────────────────────────────────────────────── */
+function pairSplit(rows) {
+  const out = [];
+  let i = 0;
+  while (i < rows.length) {
+    const r = rows[i];
+    if (r.hunk || r.skip != null) { out.push({ special: r }); i++; continue; }
+    if (r.k === "del") {
+      const dels = [];
+      while (i < rows.length && rows[i].k === "del") dels.push(rows[i++]);
+      const adds = [];
+      while (i < rows.length && rows[i].k === "add") adds.push(rows[i++]);
+      const n = Math.max(dels.length, adds.length);
+      for (let j = 0; j < n; j++) {
+        out.push({
+          left: dels[j] ? { ln: dels[j].a, t: dels[j].t, k: "del" } : null,
+          right: adds[j] ? { ln: adds[j].b, t: adds[j].t, k: "add" } : null,
+        });
+      }
+      continue;
+    }
+    if (r.k === "add") {
+      while (i < rows.length && rows[i].k === "add") {
+        const a = rows[i++];
+        out.push({ left: null, right: { ln: a.b, t: a.t, k: "add" } });
+      }
+      continue;
+    }
+    out.push({
+      left: { ln: r.a, t: r.t, k: "" },
+      right: { ln: r.b, t: r.t, k: "" },
+    });
+    i++;
+  }
+  return out;
+}
+
+function renderDiff(host, rows) {
+  if (state.layout === "split") return renderSplit(host, rows);
+
+  const wrap = el("div", "diff-wrap");
+  rows.forEach((r) => {
+    if (r.hunk) { wrap.appendChild(el("div", "hunk-bar", esc(r.hunk))); return; }
+    if (r.skip != null) { wrap.appendChild(el("div", "skip", `··· ${r.skip} lines unchanged ···`)); return; }
+    const kind = r.k || "";
+    const row = el("div", "row" + (kind ? " " + kind : ""));
+    const code = kind && r.t.trim()
+      ? esc(r.t).replace(/(\S+)$/, `<span class="hl hl-${kind === "add" ? "add" : "del"}">$1</span>`)
+      : esc(r.t);
+    row.innerHTML =
+      `<span class="ln">${r.a}</span><span class="ln">${r.b}</span>` +
+      `<span class="sign">${kind === "add" ? "+" : kind === "del" ? "−" : ""}</span>` +
+      `<span class="code">${code || "&nbsp;"}</span>`;
+    wrap.appendChild(row);
+  });
+  host.appendChild(wrap);
+}
+
+function renderSplit(host, rows) {
+  const wrap = el("div", "split-wrap");
+  const side = (cell, align) => {
+    if (!cell) return `<div class="side void"><span class="ln"></span><span class="code">&nbsp;</span></div>`;
+    const body = cell.k && cell.t.trim()
+      ? esc(cell.t).replace(/(\S+)$/, `<span class="hl hl-${cell.k === "add" ? "add" : "del"}">$1</span>`)
+      : esc(cell.t);
+    return `<div class="side ${cell.k}"><span class="ln">${cell.ln}</span>` +
+           `<span class="code">${body || "&nbsp;"}</span></div>`;
+  };
+  pairSplit(rows).forEach((p) => {
+    if (p.special) {
+      const r = p.special;
+      const band = r.hunk
+        ? el("div", "hunk-bar", esc(r.hunk))
+        : el("div", "skip", `··· ${r.skip} lines unchanged ···`);
+      wrap.appendChild(band);
+      return;
+    }
+    wrap.appendChild(el("div", "srow", side(p.left) + side(p.right)));
+  });
+  host.appendChild(wrap);
+}
+
+/* ── col 3 ────────────────────────────────────────────── */
+function renderSheet() {
+  const head = document.getElementById("sheet-head");
+  const body = document.getElementById("sheet-body");
+  const foot = document.getElementById("sheet-foot");
+  body.className = "sheet-body" + (state.wrap ? " wrapped" : "");
+  body.innerHTML = "";
+
+  if (state.view === "review") {
+    const f = round.files[0];
+    head.innerHTML =
+      `<span class="file">${esc(f.path)}</span><span class="stats">${stats(f.add, f.del)}</span>` +
+      `<span class="counter">1 / 3</span><span class="grow"></span>` +
+      `<span class="seg"><button data-layout="unified" aria-pressed="${state.layout === "unified"}">Unified</button>` +
+      `<button data-layout="split" aria-pressed="${state.layout === "split"}">Split</button></span>` +
+      `<label class="wrap-toggle"><input type="checkbox" id="wraptog" ${state.wrap ? "checked" : ""}><span>wrap</span></label>`;
+    const u = el("details", "umsgs");
+    u.open = true;
+    const uh = el("summary");
+    uh.innerHTML = `<span class="caret"></span><span>User messages</span><span class="n">${userMessages.length}</span><span class="grow"></span><span class="n">${round.from}</span>`;
+    u.appendChild(uh);
+    const ul = el("div", "list");
+    userMessages.forEach((m) => ul.appendChild(el("div", "msg", `<span class="t">${m.t}</span>${esc(m.text)}`)));
+    u.appendChild(ul);
+    body.appendChild(u);
+
+    renderDiff(body, diffRows);
+    const t = sum(round.files);
+    foot.innerHTML =
+      `<span>${round.files.length} files</span>${stats(t.a, t.d)}` +
+      `<span>${round.from} → ${round.to}</span><span class="grow"></span>` +
+      `<span class="kbd">j</span><span class="kbd">k</span> next file`;
+    return;
+  }
+
+  if (state.view === "git") {
+    const c = commits[state.commit];
+    const tot = sum(c.files);
+    head.innerHTML =
+      `<span class="file">${c.hash} · ${esc(c.subject)}</span>` +
+      `<span class="grow"></span><span class="counter">${c.files.length} files</span>`;
+    const card = el("div", "commit-card");
+    card.innerHTML =
+      `<span class="avatar">R</span>` +
+      `<span><span class="subject">${esc(c.subject)}</span>` +
+      `<span class="meta">RunMintOn<span class="sep"></span>${c.date} ${c.when}` +
+      `<span class="sep"></span><span class="sha">${c.hash}</span></span></span>` +
+      `<span class="commit-total">${stats(tot.a, tot.d)}</span>`;
+    body.appendChild(card);
+
+    const files = el("div", "commit-files");
+    c.files.forEach((f, i) => {
+      const row = el("div", "commit-file");
+      row.innerHTML =
+        pathCell(f.path) +
+        `<span class="fstats">${stats(f.add, f.del)}</span>`;
+      files.appendChild(row);
+      if (i === 0) {
+        const block = el("div", "diff-block");
+        renderDiff(block, diffRows);
+        files.appendChild(block);
+      }
+    });
+    body.appendChild(files);
+    foot.innerHTML = `${stats(tot.a, tot.d)}<span class="grow"></span><span>${c.files.length} files</span>`;
+    return;
+  }
+
+  /* source */
+  head.innerHTML =
+    `<span class="file">reply source · 第 3 轮</span><span class="grow"></span>` +
+    `<span class="counter">read only</span>`;
+  const pre = el("div");
+  pre.style.cssText = "padding:20px 22px;font:12px/1.8 var(--mono);white-space:pre-wrap;color:var(--ink-2)";
+  pre.textContent = `## 折叠的 hunk 现在会被画出来\n\n之前 \`collapsed\` 的分支直接跳过，被折叠掉的那段改动完全不显示，\n你只能看到「还有 N 行没展开」却没法展开。现在先测量再绘制。\n\n\`src/diffview.go\` +7 -2\n\n另外把滚动位置的计算拆成两步，避免每帧重算整张表：\n\n\`\`\`go\nv.hunkTop = make([]int, len(v.hunks)+1)\nv.hunksDirty = false\n\`\`\``;
+  body.appendChild(pre);
+  foot.innerHTML = `<span>4 sections · 893 words</span><span class="grow"></span><span>临时预览，不写盘</span>`;
+}
+
+function renderAll() { renderCol2(); renderSheet(); }
+
+/* ── events ───────────────────────────────────────────── */
+document.getElementById("proto").addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-k]");
+  if (!b) return;
+  const k = b.dataset.k, v = b.dataset.v;
+  if (k === "view") state.view = v;
+  else document.documentElement.dataset[k] = v;
+  document.querySelectorAll(`#proto [data-k="${k}"]`).forEach((x) =>
+    x.setAttribute("aria-pressed", x === b ? "true" : "false"));
+  renderAll();
+});
+
+document.getElementById("col2").addEventListener("click", (e) => {
+  const t = e.target.closest("#flat-toggle button");
+  if (t) { state.changedMode = t.dataset.m; renderCol2(); return; }
+  const row = e.target.closest(".crow");
+  if (row) { state.commit = Number(row.dataset.i); renderCol2(); renderSheet(); }
+});
+
+document.getElementById("sheet-head").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-layout]");
+  if (b) {
+    state.layout = b.dataset.layout;
+    if (state.layout === "split") state.wrap = true;
+    renderSheet();
+  }
+});
+
+document.getElementById("sheet-head").addEventListener("change", (e) => {
+  if (e.target.id === "wraptog") { state.wrap = e.target.checked; renderSheet(); }
+});
+
+document.getElementById("paper-btn").addEventListener("click", () => {
+  const next = document.documentElement.dataset.paper === "charcoal" ? "ivory" : "charcoal";
+  document.documentElement.dataset.paper = next;
+  document.getElementById("paper-btn").textContent = (next === "charcoal" ? "Charcoal" : "Ivory") + " ⌄";
+});
+
+document.getElementById("show-source").addEventListener("click", (e) => {
+  const on = !state.source;
+  state.source = on;
+  state.view = on ? "source" : "review";
+  e.currentTarget.setAttribute("aria-pressed", String(on));
+  renderAll();
+});
+
+renderAll();
+</script>
+</body>
+</html>

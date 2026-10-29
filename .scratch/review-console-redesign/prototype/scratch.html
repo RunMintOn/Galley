@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark" data-font="mixed" data-tabs="horizontal">
+<head>
+<meta charset="utf-8">
+<title>Lite Editor · Scratch 原型</title>
+<style>
+/* ── tokens（与主原型同源）────────────────────────── */
+:root {
+  --ui: -apple-system, "SF Pro Text", "Helvetica Neue", system-ui, sans-serif;
+  --mono: "SF Mono", ui-monospace, "JetBrains Mono", Menlo, monospace;
+  --serif: "Charter", "Iowan Old Style", Palatino, serif;
+  --r-lg: 10px; --r-md: 8px; --r-sm: 6px; --r-xs: 4px;
+  --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 24px;
+  --dur: 120ms;
+}
+html[data-theme="dark"] {
+  --bg: #090909; --rail: #0e0e0e; --rail-2: #101010;
+  --sheet: #181818; --raise: #202020; --hover: #242424; --sel: #2c2c2c;
+  --line: rgba(255,255,255,.065); --line-2: rgba(255,255,255,.12);
+  --ink: #ededed; --ink-2: #a8a8a8; --ink-3: #717171;
+  --add: #3ecf8e; --del: #f2555f;
+  --add-bg: #10241a; --del-bg: #2a1518;
+  --add-ink: #8fe3b6; --del-ink: #f4a3a7;
+  --accent: #b8b8b8;
+  --paper: #1d1d1d; --paper-ink: #ededed;
+  --paper-ivory: #f8f8f6; --paper-ink-ivory: #232323;
+}
+html[data-theme="light"] {
+  --bg: #ededed; --rail: #f8f8f8; --rail-2: #f3f3f3;
+  --sheet: #ffffff; --raise: #f9f9f9; --hover: #efefef; --sel: #e6e6e6;
+  --line: rgba(20,20,20,.08); --line-2: rgba(20,20,20,.14);
+  --ink: #1a1a1a; --ink-2: #545454; --ink-3: #8a8a8a;
+  --add: #0f8a4d; --del: #c93a45;
+  --add-bg: #e9f8f0; --del-bg: #fdedee;
+  --add-ink: #0b6b3c; --del-ink: #a52c36;
+  --accent: #5a5a5a;
+  --paper: #f1f1f1; --paper-ink: #1a1a1a;
+  --paper-ivory: #fcfcfa; --paper-ink-ivory: #232323;
+}
+html[data-paper="ivory"] { --paper: var(--paper-ivory); --paper-ink: var(--paper-ink-ivory); }
+:root {
+  --paper-line: color-mix(in oklab, var(--paper-ink) 11%, transparent);
+  --paper-code: color-mix(in oklab, var(--paper-ink) 6%, var(--paper));
+  --paper-mute: color-mix(in oklab, var(--paper-ink) 45%, transparent);
+  --paper-hover: color-mix(in oklab, var(--paper-ink) 7%, transparent);
+}
+html[data-font="mono"] { --ui: var(--mono); }
+
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 12.5px/1.45 var(--ui);
+  -webkit-font-smoothing: antialiased; overflow: hidden;
+  display: flex; flex-direction: column;
+}
+button, input, textarea, select { font: inherit; color: inherit; }
+button {
+  border: 0; background: transparent; cursor: pointer; padding: 0;
+  border-radius: var(--r-sm);
+  transition: background var(--dur) ease, color var(--dur) ease;
+}
+button:active { transform: scale(.985); }
+button:focus-visible, textarea:focus-visible { outline: 1.5px solid var(--accent); outline-offset: -1px; }
+.num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.add { color: var(--add); } .del { color: var(--del); }
+.kbd { font: 10px/1 var(--mono); color: var(--ink-3); }
+
+/* ── shell ──────────────────────────────────────────── */
+#shell { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+#shell[data-tabs="vertical"] { flex-direction: row; }
+
+/* 水平标签条 */
+#tabs {
+  display: flex; align-items: stretch; gap: 2px;
+  padding: 0 8px; min-height: 40px;
+  background: var(--rail); border-bottom: 1px solid var(--line);
+  overflow-x: auto; scrollbar-width: none;
+}
+#tabs::-webkit-scrollbar { display: none; }
+.tab {
+  display: flex; align-items: center; gap: 7px; max-width: 220px;
+  padding: 0 10px; border-radius: var(--r-sm) var(--r-sm) 0 0;
+  border-bottom: 2px solid transparent; color: var(--ink-3); font-size: 12px;
+  white-space: nowrap; flex: none;
+}
+.tab:hover { background: var(--hover); color: var(--ink-2); }
+.tab[aria-current="true"] { background: var(--sheet); color: var(--ink); border-bottom-color: var(--ink-2); }
+.tab .kind { width: 6px; height: 6px; border-radius: 50%; flex: none; background: var(--ink-3); }
+.tab .kind.doc { background: #6f9ad6; }
+.tab .kind.diff { background: #c78f5a; }
+.tab .name { overflow: hidden; text-overflow: ellipsis; }
+.tab .x {
+  width: 16px; height: 16px; display: grid; place-items: center; flex: none;
+  border-radius: 3px; color: var(--ink-3); font-size: 12px; line-height: 1;
+}
+.tab .x:hover { background: var(--line-2); color: var(--ink); }
+#newtab {
+  align-self: center; width: 26px; height: 26px; margin-left: 4px; flex: none;
+  display: grid; place-items: center; color: var(--ink-3); font-size: 15px;
+  border-radius: var(--r-xs);
+}
+#newtab:hover { background: var(--hover); color: var(--ink-2); }
+#tabhint {
+  align-self: center; margin-left: 6px; font: 10px/1 var(--mono); color: var(--ink-3);
+  opacity: .7; flex: none;
+}
+
+/* 垂直标签条 */
+#shell[data-tabs="vertical"] #tabs {
+  flex-direction: column; width: 216px; min-height: 0; padding: 8px;
+  border-bottom: 0; border-right: 1px solid var(--line); overflow-y: auto;
+}
+#shell[data-tabs="vertical"] .tab {
+  border-radius: var(--r-sm); border-bottom: 0; border-left: 2px solid transparent;
+  padding: 7px 9px; max-width: none;
+}
+#shell[data-tabs="vertical"] .tab[aria-current="true"] { border-left-color: var(--ink-2); }
+#shell[data-tabs="vertical"] #newtab { margin: 6px 0 0; width: 100%; }
+#shell[data-tabs="vertical"] #tabhint { display: none; }
+
+/* ── 工作区 ─────────────────────────────────────────── */
+#work { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--bg); }
+#work.empty { align-items: center; justify-content: center; color: var(--ink-3); font-size: 12.5px; }
+#bar {
+  min-height: 40px; display: flex; align-items: center; gap: 9px;
+  padding: 0 12px; border-bottom: 1px solid var(--line); flex-wrap: wrap;
+}
+#bar .grow { flex: 1; }
+#bar .title {
+  font-size: 12.5px; color: var(--ink); min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.seg { display: inline-flex; padding: 2px; gap: 2px; background: var(--raise); border-radius: var(--r-sm); flex: none; }
+.seg button { font-size: 10.5px; padding: 2px 8px; color: var(--ink-3); border-radius: 4px; white-space: nowrap; }
+.seg button[aria-pressed="true"] { background: var(--sel); color: var(--ink); }
+#bar .counter { font: 10.5px/1 var(--mono); color: var(--ink-3); flex: none; }
+
+#panes { flex: 1; min-height: 0; display: grid; }
+#panes[data-layout="split"] { grid-template-columns: 1fr 1fr; }
+#panes[data-layout="source"], #panes[data-layout="preview"], #panes[data-layout="full"] { grid-template-columns: 1fr; }
+.pane { min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+.pane + .pane { border-left: 1px solid var(--line); }
+.pane-head {
+  height: 28px; min-height: 28px; display: flex; align-items: center; gap: 7px;
+  padding: 0 12px; border-bottom: 1px solid var(--line);
+  font: 10px/1 var(--mono); color: var(--ink-3); letter-spacing: .06em; text-transform: uppercase;
+}
+.pane-head .grow { flex: 1; }
+.pane-head .pill {
+  text-transform: none; letter-spacing: 0; padding: 2px 6px; border-radius: 4px;
+  background: var(--raise); color: var(--ink-3);
+}
+
+/* 编辑器 */
+textarea.src {
+  flex: 1; width: 100%; min-height: 0; resize: none;
+  border: 0; outline: 0; background: var(--sheet); color: var(--ink-2);
+  padding: 14px 16px; font: 12.5px/1.75 var(--mono); tab-size: 2;
+}
+textarea.src::placeholder { color: var(--ink-3); opacity: .6; }
+
+/* 预览（纸） */
+.preview {
+  flex: 1; min-height: 0; overflow: auto; padding: 30px 34px 60px;
+  background: var(--paper); color: var(--paper-ink);
+  font: 16px/1.7 var(--serif);
+}
+.preview h1 { font-size: 24px; line-height: 1.28; margin: 0 0 16px; font-weight: 600; }
+.preview h2 { font-size: 19px; line-height: 1.32; margin: 28px 0 12px; font-weight: 600; }
+.preview h3 { font-size: 16px; margin: 22px 0 10px; font-weight: 600; }
+.preview p { margin: 0 0 15px; text-wrap: pretty; }
+.preview ul, .preview ol { margin: 0 0 15px; padding-left: 22px; }
+.preview li { margin: 0 0 6px; }
+.preview code {
+  font: 12.5px/1.5 var(--mono); background: var(--paper-code);
+  padding: 1px 5px; border-radius: 4px;
+}
+.preview pre {
+  margin: 0 0 15px; padding: 11px 14px; background: var(--paper-code);
+  border: 1px solid var(--paper-line); border-radius: var(--r-sm);
+  font: 12px/1.66 var(--mono); overflow-x: auto;
+}
+.preview pre code { background: transparent; padding: 0; }
+.preview blockquote {
+  margin: 0 0 15px; padding: 2px 0 2px 14px;
+  border-left: 2px solid var(--paper-line); color: var(--paper-mute);
+}
+.preview a { color: inherit; text-decoration: underline; text-underline-offset: 2px; opacity: .85; }
+.preview hr { border: 0; border-top: 1px solid var(--paper-line); margin: 24px 0; }
+.preview table { border-collapse: collapse; margin: 0 0 15px; font-size: 14px; }
+.preview th, .preview td { border: 1px solid var(--paper-line); padding: 6px 10px; text-align: left; }
+.preview th { font-weight: 600; background: var(--paper-code); }
+.preview .empty { color: var(--paper-mute); font-size: 15px; }
+
+/* diff 结果 */
+.diffpane { flex: 1; min-height: 0; overflow: auto; scrollbar-width: thin; background: var(--sheet); }
+.dwrap { width: max-content; min-width: 100%; font: 12px/1.7 var(--mono); padding-block: 2px; }
+.srow { display: grid; grid-template-columns: 1fr 1fr; }
+.side { display: grid; grid-template-columns: 38px 1fr; min-height: 20px; }
+.side + .side { border-left: 1px solid var(--line); }
+.side .ln {
+  color: var(--ink-3); opacity: .7; text-align: right; padding-right: 7px;
+  font-size: 10.5px; line-height: 20px; user-select: none; font-variant-numeric: tabular-nums;
+}
+.side .code { white-space: pre-wrap; overflow-wrap: anywhere; padding: 0 14px 0 8px; color: var(--ink-2); }
+.side.add { background: var(--add-bg); }
+.side.add .code { color: var(--add-ink); }
+.side.del { background: var(--del-bg); }
+.side.del .code { color: var(--del-ink); }
+.side.void { background: transparent; }
+.dhunk {
+  display: flex; align-items: center; gap: 8px; padding: 5px 12px;
+  background: var(--raise); border-block: 1px solid var(--line);
+  font: 10.5px/1 var(--mono); color: var(--ink-3);
+}
+.dhunk .grow { flex: 1; }
+
+/* ── proto bar ─────────────────────────────────────── */
+#proto {
+  order: -1; flex: none; z-index: 99;
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  padding: 7px 12px; border-bottom: 1px solid rgba(255,255,255,.12);
+  background: #0d0d0d; font: 10.5px/1 var(--ui); color: #b8b8b8;
+}
+#proto .tag { color: #5e5e5e; letter-spacing: .08em; text-transform: uppercase; font-weight: 650; }
+#proto .grp { display: flex; align-items: center; gap: 4px; }
+#proto .grp > span { color: #6a6a6a; margin-right: 2px; }
+#proto button { padding: 4px 8px; border-radius: 5px; color: #b8b8b8; border: 1px solid rgba(255,255,255,.09); }
+#proto button[aria-pressed="true"] { background: rgba(255,255,255,.17); color: #fff; border-color: transparent; }
+#proto .hint { color: #505050; }
+</style>
+</head>
+<body>
+
+<div id="proto">
+  <span class="tag">Prototype</span>
+  <div class="grp"><span>Theme</span>
+    <button data-k="theme" data-v="dark" aria-pressed="true">Dark</button>
+    <button data-k="theme" data-v="light" aria-pressed="false">Light</button>
+  </div>
+  <div class="grp"><span>Type</span>
+    <button data-k="font" data-v="mixed" aria-pressed="true">Mixed</button>
+    <button data-k="font" data-v="mono" aria-pressed="false">All mono</button>
+  </div>
+  <div class="grp"><span>Tabs</span>
+    <button data-k="tabs" data-v="horizontal" aria-pressed="true">Horizontal</button>
+    <button data-k="tabs" data-v="vertical" aria-pressed="false">Vertical</button>
+  </div>
+  <div class="grp"><span>Paper</span>
+    <button data-k="paper" data-v="charcoal" aria-pressed="true">Charcoal</button>
+    <button data-k="paper" data-v="ivory" aria-pressed="false">Ivory</button>
+  </div>
+  <span class="hint">⌘T 新建 · ⌘W 关闭 · ⌘1…9 切换</span>
+</div>
+
+<div id="shell" data-tabs="horizontal">
+  <div id="tabs"></div>
+  <div id="work"></div>
+</div>
+
+<script>
+/* ── 初始内容 ───────────────────────────────────────── */
+const SAMPLE_DOC = `# 折叠的 hunk 现在会被画出来
+
+之前 \`collapsed\` 的分支直接跳过，被折叠掉的那段改动完全不显示，
+你只能看到「还有 N 行没展开」却没法展开。现在先测量再绘制。
+
+## 改了什么
+
+- 折叠区按 hunk 预算高度，不再假设零高度
+- 滚动位置在 \`measure\` 之后才计算
+- \`markDirty\` 只在真正变了的时候调用
+
+## 代码
+
+\`\`\`go
+v.hunkTop = make([]int, len(v.hunks)+1)
+v.hunksDirty = false
+\`\`\`
+
+## 验证
+
+切换文件不会制造未保存修改；原文仅用于临时预览。
+
+> 这一栏是临时文档，不写盘，关掉就没了。
+`;
+
+const SAMPLE_BEFORE = `func (v *DiffView) draw() {
+    y := 0
+    for _, h := range v.hunks {
+        if h.collapsed {
+            continue
+        }
+        v.drawHunk(h)
+        v.updateScroll()
+    }
+}
+`;
+
+const SAMPLE_AFTER = `func (v *DiffView) draw() {
+    y := 0
+    for _, h := range v.hunks {
+        if h.collapsed {
+            v.drawCollapsed(h)
+            continue
+        }
+        v.drawHunk(h)
+        v.measure(h)
+        v.updateScroll(h)
+        v.markDirty()
+    }
+}
+`;
+
+/* ── 状态 ───────────────────────────────────────────── */
+let seq = 0;
+const tabs = [
+  { id: ++seq, kind: "doc", name: "折叠的 hunk", layout: "split", text: SAMPLE_DOC },
+  { id: ++seq, kind: "diff", name: "diffview.go", mode: "diff", before: SAMPLE_BEFORE, after: SAMPLE_AFTER },
+];
+let active = tabs[0].id;
+
+/* ── 极简 markdown ──────────────────────────────────── */
+const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+const inline = (s) => esc(s)
+  .replace(/`([^`]+)`/g, "<code>$1</code>")
+  .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+  .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
+
+function md(src) {
+  const out = [];
+  const lines = src.replace(/\r\n/g, "\n").split("\n");
+  let i = 0;
+  while (i < lines.length) {
+    const l = lines[i];
+    if (/^```/.test(l)) {
+      const buf = [];
+      i++;
+      while (i < lines.length && !/^```/.test(lines[i])) buf.push(lines[i++]);
+      i++;
+      out.push(`<pre><code>${esc(buf.join("\n"))}</code></pre>`);
+      continue;
+    }
+    if (/^\s*$/.test(l)) { i++; continue; }
+    const h = l.match(/^(#{1,3})\s+(.*)$/);
+    if (h) { out.push(`<h${h[1].length}>${inline(h[2])}</h${h[1].length}>`); i++; continue; }
+    if (/^>\s?/.test(l)) {
+      const buf = [];
+      while (i < lines.length && /^>\s?/.test(lines[i])) buf.push(lines[i++].replace(/^>\s?/, ""));
+      out.push(`<blockquote>${inline(buf.join(" "))}</blockquote>`);
+      continue;
+    }
+    if (/^[-*]\s+/.test(l)) {
+      const buf = [];
+      while (i < lines.length && /^[-*]\s+/.test(lines[i])) buf.push(lines[i++].replace(/^[-*]\s+/, ""));
+      out.push(`<ul>${buf.map((x) => `<li>${inline(x)}</li>`).join("")}</ul>`);
+      continue;
+    }
+    if (/^\d+\.\s+/.test(l)) {
+      const buf = [];
+      while (i < lines.length && /^\d+\.\s+/.test(lines[i])) buf.push(lines[i++].replace(/^\d+\.\s+/, ""));
+      out.push(`<ol>${buf.map((x) => `<li>${inline(x)}</li>`).join("")}</ol>`);
+      continue;
+    }
+    if (/^\|.*\|$/.test(l) && /^\|[\s:|-]+\|$/.test(lines[i + 1] || "")) {
+      const head = l.split("|").slice(1, -1).map((c) => c.trim());
+      i += 2;
+      const rows = [];
+      while (i < lines.length && /^\|.*\|$/.test(lines[i])) {
+        rows.push(lines[i++].split("|").slice(1, -1).map((c) => c.trim()));
+      }
+      out.push(
+        `<table><thead><tr>${head.map((c) => `<th>${inline(c)}</th>`).join("")}</tr></thead><tbody>` +
+        rows.map((r) => `<tr>${r.map((c) => `<td>${inline(c)}</td>`).join("")}</tr>`).join("") +
+        `</tbody></table>`
+      );
+      continue;
+    }
+    if (/^---+$/.test(l)) { out.push("<hr>"); i++; continue; }
+    const buf = [];
+    while (i < lines.length && !/^\s*$/.test(lines[i]) && !/^(#{1,3}\s|```|>|[-*]\s|\d+\.\s|\|)/.test(lines[i])) {
+      buf.push(lines[i++]);
+    }
+    out.push(`<p>${inline(buf.join(" "))}</p>`);
+  }
+  return out.join("");
+}
+
+/* ── 行级 diff（LCS）────────────────────────────────── */
+function lineDiff(a, b) {
+  const A = a.replace(/\r\n/g, "\n").split("\n");
+  const B = b.replace(/\r\n/g, "\n").split("\n");
+  const n = A.length, m = B.length;
+  if (n > 1200 || m > 1200 || n * m > 1_200_000) {
+    return { ops: [...A.map((t) => ({ k: "del", t })), ...B.map((t) => ({ k: "add", t }))], simple: true };
+  }
+  const w = m + 1;
+  const dp = new Int32Array((n + 1) * w);
+  for (let i = n - 1; i >= 0; i--) {
+    for (let j = m - 1; j >= 0; j--) {
+      dp[i * w + j] = A[i] === B[j]
+        ? dp[(i + 1) * w + j + 1] + 1
+        : Math.max(dp[(i + 1) * w + j], dp[i * w + j + 1]);
+    }
+  }
+  const ops = [];
+  let i = 0, j = 0;
+  while (i < n && j < m) {
+    if (A[i] === B[j]) { ops.push({ k: "eq", a: i, b: j, t: A[i] }); i++; j++; }
+    else if (dp[(i + 1) * w + j] >= dp[i * w + j + 1]) { ops.push({ k: "del", a: i, t: A[i] }); i++; }
+    else { ops.push({ k: "add", b: j, t: B[j] }); j++; }
+  }
+  while (i < n) ops.push({ k: "del", a: i, t: A[i++] });
+  while (j < m) ops.push({ k: "add", b: j, t: B[j++] });
+  return { ops, simple: false };
+}
+
+function pairOps(ops) {
+  const rows = [];
+  let i = 0;
+  while (i < ops.length) {
+    const op = ops[i];
+    if (op.k === "del") {
+      const dels = [];
+      while (i < ops.length && ops[i].k === "del") dels.push(ops[i++]);
+      const adds = [];
+      while (i < ops.length && ops[i].k === "add") adds.push(ops[i++]);
+      const max = Math.max(dels.length, adds.length);
+      for (let x = 0; x < max; x++) rows.push({ left: dels[x] || null, right: adds[x] || null });
+      continue;
+    }
+    if (op.k === "add") {
+      while (i < ops.length && ops[i].k === "add") rows.push({ left: null, right: ops[i++] });
+      continue;
+    }
+    rows.push({ left: op, right: op });
+    i++;
+  }
+  return rows;
+}
+
+function renderDiffInto(host, before, after) {
+  host.innerHTML = "";
+  const { ops } = lineDiff(before, after);
+  const rows = pairOps(ops);
+  let added = 0, removed = 0;
+  ops.forEach((o) => { if (o.k === "add") added++; if (o.k === "del") removed++; });
+
+  const wrap = document.createElement("div");
+  wrap.className = "dwrap";
+  const sideOf = (cell, side) => {
+    if (!cell) return `<div class="side void"><span class="ln"></span><span class="code">&nbsp;</span></div>`;
+    let num = "";
+    if (cell.k === "eq") num = (side === "left" ? cell.a : cell.b) + 1;
+    else if (cell.k === "del") num = side === "left" ? cell.a + 1 : "";
+    else if (cell.k === "add") num = side === "right" ? cell.b + 1 : "";
+    const cls = cell.k === "eq" ? "" : cell.k;
+    return `<div class="side ${cls}"><span class="ln">${num}</span>` +
+           `<span class="code">${esc(cell.t) || "&nbsp;"}</span></div>`;
+  };
+  rows.forEach((r) => {
+    const d = document.createElement("div");
+    d.className = "srow";
+    d.innerHTML = sideOf(r.left, "left") + sideOf(r.right, "right");
+    wrap.appendChild(d);
+  });
+  host.appendChild(wrap);
+  return { added, removed };
+}
+
+/* ── 渲染 ───────────────────────────────────────────── */
+const tabsEl = document.getElementById("tabs");
+const workEl = document.getElementById("work");
+
+function renderTabs() {
+  tabsEl.innerHTML = "";
+  tabs.forEach((t) => {
+    const b = document.createElement("button");
+    b.className = "tab";
+    b.dataset.id = t.id;
+    if (t.id === active) b.setAttribute("aria-current", "true");
+    b.innerHTML =
+      `<span class="kind ${t.kind}"></span><span class="name">${esc(t.name)}</span>` +
+      `<span class="x" data-close="${t.id}">×</span>`;
+    tabsEl.appendChild(b);
+  });
+  const add = document.createElement("button");
+  add.id = "newtab";
+  add.title = "新标签页 ⌘T";
+  add.textContent = "+";
+  add.onclick = () => newTab("doc");
+  tabsEl.appendChild(add);
+  const hint = document.createElement("span");
+  hint.id = "tabhint";
+  hint.textContent = "⌘T";
+  tabsEl.appendChild(hint);
+}
+
+function newTab(kind) {
+  const t = kind === "diff"
+    ? { id: ++seq, kind: "diff", name: "untitled diff", mode: "edit", before: "", after: "" }
+    : { id: ++seq, kind: "doc", name: "untitled", layout: "split", text: "" };
+  tabs.push(t);
+  active = t.id;
+  renderAll();
+}
+
+function closeTab(id) {
+  const i = tabs.findIndex((t) => t.id === id);
+  if (i < 0) return;
+  tabs.splice(i, 1);
+  if (active === id) active = tabs.length ? tabs[Math.min(i, tabs.length - 1)].id : null;
+  renderAll();
+}
+
+function activeTab() { return tabs.find((t) => t.id === active) || null; }
+
+function renderWork() {
+  const t = activeTab();
+  workEl.className = "";
+  if (!t) {
+    workEl.classList.add("empty");
+    workEl.innerHTML = "没有打开的标签页 · ⌘T 新建";
+    return;
+  }
+  workEl.innerHTML = "";
+
+  const bar = document.createElement("div");
+  bar.id = "bar";
+  const panes = document.createElement("div");
+  panes.id = "panes";
+
+  if (t.kind === "doc") {
+    bar.innerHTML =
+      `<span class="title">${esc(t.name)}</span><span class="grow"></span>` +
+      `<span class="seg" data-seg="layout">` +
+      `<button data-v="source" aria-pressed="${t.layout === "source"}">Source</button>` +
+      `<button data-v="split" aria-pressed="${t.layout === "split"}">Split</button>` +
+      `<button data-v="preview" aria-pressed="${t.layout === "preview"}">Preview</button></span>`;
+    panes.dataset.layout = t.layout;
+
+    if (t.layout !== "preview") {
+      const src = document.createElement("div");
+      src.className = "pane";
+      src.innerHTML = `<div class="pane-head"><span>source</span><span class="grow"></span>` +
+                      `<span class="pill">md</span></div>`;
+      const ta = document.createElement("textarea");
+      ta.className = "src";
+      ta.spellcheck = false;
+      ta.placeholder = "在这里写 Markdown…";
+      ta.value = t.text;
+      ta.oninput = () => { t.text = ta.value; syncPreview(); };
+      src.appendChild(ta);
+      panes.appendChild(src);
+      setTimeout(() => { if (!t.text) ta.focus(); }, 0);
+    }
+    if (t.layout !== "source") {
+      const pv = document.createElement("div");
+      pv.className = "pane";
+      pv.innerHTML =
+        `<div class="pane-head"><span>preview</span><span class="grow"></span>` +
+        `<span class="pill">rendered</span></div>` +
+        `<div class="preview" id="pv"></div>`;
+      panes.appendChild(pv);
+    }
+    function syncPreview() {
+      const pv = document.getElementById("pv");
+      if (!pv) return;
+      pv.innerHTML = t.text.trim() ? md(t.text) : `<p class="empty">左边写了内容，这里就会出现渲染结果。</p>`;
+    }
+
+    bar.onclick = (e) => {
+      const b = e.target.closest("[data-v]");
+      if (!b) return;
+      t.layout = b.dataset.v;
+      renderWork();
+    };
+    workEl.appendChild(bar);
+    workEl.appendChild(panes);
+    syncPreview();
+    return;
+  }
+
+  /* diff tab */
+  const r = lineDiff(t.before, t.after);
+  let a = 0, d = 0;
+  r.ops.forEach((o) => { if (o.k === "add") a++; if (o.k === "del") d++; });
+  bar.innerHTML =
+    `<span class="title">${esc(t.name)}</span><span class="grow"></span>` +
+    `<span class="counter"><span class="add">+${a}</span> <span class="del">−${d}</span></span>` +
+    `<span class="seg" data-seg="mode">` +
+    `<button data-v="edit" aria-pressed="${t.mode === "edit"}">Edit</button>` +
+    `<button data-v="diff" aria-pressed="${t.mode === "diff"}">Diff</button></span>`;
+  panes.dataset.layout = t.mode === "edit" ? "split" : "full";
+
+  if (t.mode === "edit") {
+    [["before", "旧"], ["after", "新"]].forEach(([key, label]) => {
+      const p = document.createElement("div");
+      p.className = "pane";
+      p.innerHTML = `<div class="pane-head"><span>${key}</span><span class="grow"></span><span class="pill">${label}</span></div>`;
+      const ta = document.createElement("textarea");
+      ta.className = "src";
+      ta.spellcheck = false;
+      ta.placeholder = `粘贴${label}内容…`;
+      ta.value = t[key];
+      ta.oninput = () => { t[key] = ta.value; };
+      p.appendChild(ta);
+      panes.appendChild(p);
+    });
+  } else {
+    const p = document.createElement("div");
+    p.className = "pane diffpane";
+    p.id = "diffout";
+    panes.appendChild(p);
+    workEl.appendChild(bar);
+    workEl.appendChild(panes);
+    const { added, removed } = renderDiffInto(p, t.before, t.after);
+    const c = bar.querySelector(".counter");
+    if (c) c.innerHTML = `<span class="add">+${added}</span> <span class="del">−${removed}</span>`;
+    if (!t.before && !t.after) {
+      p.innerHTML = `<p style="padding:24px;color:var(--ink-3);font-size:12px">两边都是空的。切到 Edit 粘贴内容，再回来看 diff。</p>`;
+    }
+    bar.onclick = (e) => {
+      const b = e.target.closest("[data-v]");
+      if (!b) return;
+      t.mode = b.dataset.v;
+      renderWork();
+    };
+    return;
+  }
+
+  bar.onclick = (e) => {
+    const b = e.target.closest("[data-v]");
+    if (!b) return;
+    t.mode = b.dataset.v;
+    renderWork();
+  };
+  workEl.appendChild(bar);
+  workEl.appendChild(panes);
+}
+
+function renderAll() { renderTabs(); renderWork(); }
+
+/* ── 事件 ───────────────────────────────────────────── */
+tabsEl.addEventListener("click", (e) => {
+  const x = e.target.closest("[data-close]");
+  if (x) { e.stopPropagation(); closeTab(Number(x.dataset.close)); return; }
+  const t = e.target.closest(".tab");
+  if (t) { active = Number(t.dataset.id); renderAll(); }
+});
+
+document.getElementById("proto").addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-k]");
+  if (!b) return;
+  const k = b.dataset.k, v = b.dataset.v;
+  if (k === "tabs") document.getElementById("shell").dataset.tabs = v;
+  else document.documentElement.dataset[k] = v;
+  document.querySelectorAll(`#proto [data-k="${k}"]`).forEach((x) =>
+    x.setAttribute("aria-pressed", x === b ? "true" : "false"));
+});
+
+document.addEventListener("keydown", (e) => {
+  if (!e.metaKey && !e.ctrlKey) return;
+  const k = e.key.toLowerCase();
+  if (k === "t") { e.preventDefault(); newTab("doc"); }
+  else if (k === "w") {
+    if (!active) return;
+    e.preventDefault(); closeTab(active);
+  } else if (/^[1-9]$/.test(k) && tabs[Number(k) - 1]) {
+    e.preventDefault(); active = tabs[Number(k) - 1].id; renderAll();
+  }
+});
+
+renderAll();
+</script>
+</body>
+</html>
