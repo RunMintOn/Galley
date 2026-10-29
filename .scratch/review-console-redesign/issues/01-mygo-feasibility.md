@@ -9,11 +9,11 @@ Blocked by: 无
 
 ## Scope
 
-以 [spec.md](../spec.md) 为产品与数据契约的唯一来源，尤其“执行边界与交付顺序”。本票未开始；当前仅授权文档准备，实施需用户另行授权。
+以 [spec.md](../spec.md) 为产品与数据契约的唯一来源，尤其“执行边界与交付顺序”。用户已授权全部实施。本票正在进行；当前在真实桌面交互许可前暂停，依赖任务尚未开始。
 
 ## Acceptance
 
-- [ ] 获得后续实施授权后，核对 mygo 当前要求与本机工具链；安装或更新全局工具前说明具体改动。固定验证版本并记录。
+- [x] 获得实施授权后核对工具链；Go 1.27.3 校验后仅解压至 /tmp，mygo 固定到规格基线版本，未修改全局安装。
 - [ ] 在隔离状态目录运行现有 Node 服务，以真实 WKWebView 加载现有界面；验证鉴权、HTTP、WebSocket、CSP、页面存储、BroadcastChannel / navigator.locks 或明确替代路径。
 - [ ] 验证两个独立窗口共存，不被现有单页交接逻辑互相替换；原生菜单可把命令派发给聚焦窗口，原生关闭可取消。
 - [ ] 验证 CodeMirror 编辑、中文输入、复制粘贴、Markdown、公式和图表的关键路径；分别记录“已有能力可复用”和“需要适配”。
@@ -23,8 +23,8 @@ Blocked by: 无
 
 ## Implementation Notes
 
-重点阅读 `src/service.ts`、`src/server.ts`、`web-src/bootstrap.js`、`web-src/app.js`、`web-src/editor.js` 和规格中的固定版本官方文档。现阶段仅查过文档，本机 PATH 未找到 Go，尚未安装、运行或验证 mygo。此 Ticket 的技术原型也属于代码工作，当前不得开始。
+重点阅读 `src/service.ts`、`src/server.ts`、`web-src/bootstrap.js`、`web-src/app.js`、`web-src/editor.js` 和规格中的固定版本官方文档。Go 与隐藏窗口探针已在 /tmp 构建运行，部分接入验证通过；完整证据及未测项见 [接入记录](../mygo-feasibility.md)。
 
 ## Comments
 
-尚未实施、未运行本票测试。
+已完成隐藏 WKWebView 的鉴权/文件树/编辑器挂载与原生关闭拦截最小验证。尚缺真实菜单、快捷键、输入及会话唤回证据，不标完成。申请一次桌面交互许可后继续本票。
