@@ -24,6 +24,7 @@
     "build": "node scripts/build.mjs",
     "build:desktop": "node scripts/build-desktop.mjs",
     "test:redesign": "node --experimental-strip-types test/redesign.mts",
+    "test:diff": "node --experimental-strip-types test/diff-fold.mts",
     "test:desktop": "node --experimental-strip-types test/desktop.mts",
     "typecheck": "tsc --noEmit",
     "test": "node --experimental-strip-types --test test/*.test.ts",

@@ -1,0 +1,46 @@
+import assert from "node:assert/strict";
+import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+import { execFileSync } from "node:child_process";
+import { chromium } from "playwright";
+import { startConsole } from "../src/server.ts";
+import { diffFile } from "../src/diff.ts";
+const directory = await mkdtemp(join(tmpdir(), "review-fold-")), root = join(directory, "repo");
+await mkdir(root);
+const git = (...args) => execFileSync("git", ["-C", root, ...args], { encoding: "utf8" }).trim();
+git("init", "-b", "main");
+const lines = Array.from({ length: 40 }, (_, i) => `第 ${i + 1} 行内容，长度足够让表格需要换行显示`);
+const changed = [...lines];
+changed[19] = "第 20 行被改掉了，同样是一段足够长的中文内容";
+changed[29] = "第 30 行也改掉了，用来让中间的未改动段超过折叠阈值";
+await writeFile(join(root, "long.md"), lines.join("\n") + "\n");
+git("add", "."); git("-c", "user.name=F", "-c", "user.email=f@e.test", "commit", "-m", "init");
+await writeFile(join(root, "long.md"), changed.join("\n") + "\n");
+const service = await startConsole({ directory, token: "fold", web: resolve("dist/web") });
+const post = async (path, body) => { const r = await fetch(service.origin + "/api/" + path, { method: "POST", headers: { Authorization: "Bearer fold", "Content-Type": "application/json" }, body: JSON.stringify(body) }); assert.ok(r.ok, await r.text()); };
+await post("register", { cwd: root, sessionId: "a", title: "Fold" });
+const diff = diffFile("long.md", lines.join("\n") + "\n", changed.join("\n") + "\n");
+await post("round", { id: "r", sessionId: "a", outcome: "completed", end: 2, report: { id: "r", cwd: root, start: 1, end: 2, outcome: "completed", prompts: ["改一行"], files: [{ path: "long.md", status: "Modified", added: 2, deleted: 2, diff }], added: 2, deleted: 2 } });
+const browser = await chromium.launch({ headless: true, channel: "chrome" });
+try {
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  await page.goto(service.origin + "/#token=fold&session=a");
+  await page.locator("td.content").first().waitFor();
+  const widths = () => page.evaluate(() => {
+    const table = document.querySelector(".diff-surface table.diff");
+    const row = [...table.querySelectorAll("tr")].find(r => r.querySelector("td.content") && !r.querySelector("td[colspan]"));
+    const cell = row.querySelector("td.content");
+    const fold = table.querySelector("tr.fold td[colspan]");
+    return { table: Math.round(table.getBoundingClientRect().right), cell: Math.round(cell.getBoundingClientRect().right), colspan: fold?.getAttribute("colspan") ?? null };
+  });
+  await page.click('[data-layout="unified"]');
+  await page.waitForTimeout(200);
+  const unified = await widths();
+  assert.equal(unified.colspan, "4", "Unified 折叠行必须跨 4 列");
+  assert.ok(Math.abs(unified.table - unified.cell) <= 1, `Unified 内容列应铺满表格：cell ${unified.cell} / table ${unified.table}`);
+  await page.click('[data-layout="split"]');
+  await page.waitForTimeout(200);
+  assert.equal((await widths()).colspan, "5", "Split 折叠行仍跨 5 列");
+  console.log(JSON.stringify({ passed: true, unified }));
+} finally { await browser.close(); await service.close(); }

@@ -84,8 +84,11 @@ export function mountDiff(root, file, onOpen, { initialLayout = "unified" } = {}
     const right = pair.next ? (pair.type === "delete" ? "filler" : pair.type === "context" ? "context" : "insert") : "filler";
     return `<tr class="${pair.type}">${side(pair.old, left)}<td class="gutter"></td>${side(pair.next, right)}</tr>`;
   }
+  // A fold spans the whole row, so the span has to follow the active layout:
+  // unified has four columns, split has five.
+  const foldColumns = () => (layout === "split" ? 5 : 4);
   const foldHTML = (hidden, id) =>
-    `<tr class="fold"><td colspan="5"><div><span>${hidden} unchanged line${hidden === 1 ? "" : "s"}</span>` +
+    `<tr class="fold"><td colspan="${foldColumns()}"><div><span>${hidden} unchanged line${hidden === 1 ? "" : "s"}</span>` +
     `<span class="rule"></span><button type="button" data-fold="${id}">show</button></div></td></tr>`;
   // Hidden context rows stay in the DOM so expanding is a class toggle rather
   // than a second render pass. Each fold gets its own id: sharing one per hunk
