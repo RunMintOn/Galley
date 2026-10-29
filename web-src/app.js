@@ -121,11 +121,19 @@ function renderProjects() {
       branches.set(p.root, "加载分支…");
       api("git/head?" + new URLSearchParams({ root: p.root })).then(data => {
         branches.set(p.root, data.label || "无提交"); renderProjects();
-      }).catch(() => { branches.set(p.root, "非仓库 / Git 不可用"); renderProjects(); });
+      }).catch(error => {
+        // Separate "not a repo" from "git missing" so the line stays short enough for the narrow column.
+        branches.set(p.root, /not a git repository/i.test(error?.message || "") ? "非 Git 仓库" : "Git 不可用"); renderProjects();
+      });
     }
-    const count = document.createElement("span"); count.className = "project-count";
-    count.textContent = selected?.rounds.at(-1)?.count ?? "—";
-    b.append(dot, label, count); return b;
+    const count = selected?.rounds.at(-1)?.count ?? 0;
+    // A zero or unknown count has nothing to open, so the row stays clean.
+    if (count > 0) {
+      const chip = document.createElement("span"); chip.className = "project-count";
+      chip.textContent = count;
+      b.append(dot, label, chip);
+    } else b.append(dot, label);
+    return b;
   }));
 }
 async function refresh() {

@@ -325,7 +325,7 @@ header button[aria-expanded="true"] { color: var(--ink); }
 /* Paper stock picker, styled to match the band's text actions. */
 header select {
   min-height: 32px;
-  padding: 0 2px;
+  padding: 0 13px 0 2px;
   border: 0;
   border-radius: 0;
   background: none;
@@ -334,6 +334,25 @@ header select {
   cursor: pointer;
 }
 header select:hover { color: var(--ink); }
+/* The pick shares the band's hover underline; the chevron stays on the wrapper. */
+header .pick { height: 32px; }
+header .pick > select:hover { background: none; }
+header .pick::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 4px;
+  height: 2px;
+  background: var(--signal);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+header .pick:hover::before,
+header .pick:focus-within::before { transform: scaleX(1); }
+/* A pane toggle is a one-shot action, not a mode, so it keeps no state underline. */
+header .pane-toggle::after { display: none; }
 button:focus-visible,
 textarea:focus-visible {
   outline: 1px solid var(--signal-edge);

@@ -29,6 +29,11 @@ button:hover, summary:hover { background: var(--hover); }
 button:disabled { opacity: .4; cursor: default; }
 button:focus-visible, summary:focus-visible, select:focus-visible { outline: 1.5px solid var(--accent); outline-offset: -1px; }
 select { min-width: 0; border: 1px solid var(--border); border-radius: 4px; padding: 3px 5px; background: var(--panel); }
+/* Text-like picker: the native bezel ignores the palette in WebKit, so the
+   control is a plain label plus a drawn chevron. */
+.pick { position: relative; display: inline-flex; align-items: center; min-width: 0; }
+.pick > select { appearance: none; -webkit-appearance: none; max-width: 100%; border: 0; border-radius: 4px; padding: 3px 13px 3px 4px; background: none; color: inherit; }
+.pick::after { content: ''; position: absolute; right: 3px; width: 4px; height: 4px; border-right: 1px solid currentColor; border-bottom: 1px solid currentColor; opacity: .55; transform: translateY(-2px) rotate(45deg); pointer-events: none; }
 [hidden] { display: none !important; }
 kbd { font: 10px/1 var(--mono); color: var(--subtle); }
 #console { display: grid; grid-template-columns: var(--projects-width,196px) var(--files-width,248px) minmax(280px,1fr) minmax(360px,470px); height: 100dvh; overflow: hidden; }
@@ -38,7 +43,7 @@ kbd { font: 10px/1 var(--mono); color: var(--subtle); }
 .pane { min-width: 0; min-height: 0; display: flex; flex-direction: column; position: relative; }
 .pane > header { min-height: 40px; height: 40px; padding: 0 12px; display: flex; align-items: center; gap: 6px; border-bottom: 1px solid var(--border); }
 .pane > header strong, .tree-heading { font: 500 10px/1.4 var(--ui); letter-spacing: .1em; color: var(--muted); }
-.pane > header strong span { margin-left: 4px; color: var(--green); }
+.pane > header strong span { margin-left: 4px; color: var(--subtle); }
 .pane-body { overflow: auto; flex: 1; min-height: 0; scrollbar-width: thin; }
 .pane > footer { min-height: 28px; display: flex; align-items: center; gap: 8px; padding: 0 12px; border-top: 1px solid var(--border); color: var(--subtle); font-size: 10px; }
 .projects-pane { background: var(--projects); border-right: 1px solid var(--border); }
@@ -48,7 +53,8 @@ kbd { font: 10px/1 var(--mono); color: var(--subtle); }
 .project[aria-current=true], .file-button[aria-current=true] { background: var(--selected); border-left-color: var(--green); color: var(--ink); }
 .project-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .project small { display: block; color: var(--subtle); font: 10.5px/1.7 var(--mono); overflow: hidden; text-overflow: ellipsis; }
-.project-count { min-width: 22px; padding: 4px; border-radius: 4px; background: var(--selected); color: var(--green); }
+.project[aria-current=true] small { color: var(--muted); }
+.project-count { color: var(--muted); }
 .dot { width: 7px; height: 7px; border-radius: 50%; border: 1px solid var(--subtle); display: inline-block; }
 .dot.working { background: var(--green); border-color: var(--green); }
 #add-project { width: 100%; padding: 12px; display: flex; justify-content: space-between; color: var(--muted); text-align: left; font-size: 11px; }
@@ -186,7 +192,7 @@ html.dark .reply-pane[data-paper=ivory] { --paper: #f8f8f6; }
 .reply-pagination { display: inline-flex; align-items: center; gap: 4px; }
 .reply-pane #sessions, .reply-pane #rounds { appearance: none; border: 0; background: transparent; color: var(--ink-2); padding: 4px 0; font: 11px/1.5 var(--mono); text-overflow: ellipsis; }
 .reply-pane #sessions { max-width: 18ch; flex: 0 1 auto; }
-.reply-pane #rounds { width: 5ch; text-align: center; }
+.reply-pane #rounds { width: auto; min-width: 5ch; text-align: center; }
 .reply-pane #previous, .reply-pane #next { padding: 3px 6px; min-height: 28px; }
 .reply-pane #message-panel { position: static; }
 .reply-pane #input-area, .reply-pane #message-input { width: 100%; }
