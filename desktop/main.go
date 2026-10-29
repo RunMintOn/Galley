@@ -232,6 +232,7 @@ func menu() *mygo.Menu {
 		{Label: "Window", Submenu: tabs},
 	})
 }
+
 func main() {
 	mygo.App.SetName("Review Console")
 	// Isolated test instances must not take over the user's running app.
@@ -242,22 +243,28 @@ func main() {
 	if !mygo.App.RequestSingleInstanceLock() {
 		return
 	}
+	node, failure := findNode(os.Args[1:])
+	if failure != nil {
+		startupError(failure)
+		return
+	}
 	executable, err := os.Executable()
 	if err != nil {
 		log.Fatal(err)
 	}
 	resources := filepath.Join(filepath.Dir(executable), "..", "Resources")
-	cmd := exec.Command(filepath.Join(resources, "node"), filepath.Join(resources, "backend", "cli.mjs"), "--json")
+	cmd := exec.Command(node, filepath.Join(resources, "backend", "cli.mjs"), "--json")
 	output, err := cmd.Output()
 	if err != nil {
-		message := fmt.Sprintf("启动本地服务失败：%v", err)
-		if failure, ok := err.(*exec.ExitError); ok {
-			message += "\n" + string(failure.Stderr)
+		failure := &startupFailure{
+			message:    "无法启动本地服务",
+			detail:     "请复制错误信息以便排查。",
+			diagnostic: err.Error(),
 		}
-		mygo.App.WhenReady(func() { go func() { mygo.Dialog.Error("Review Console", message); mygo.App.Exit(1) }() })
-		if runErr := mygo.App.Run(); runErr != nil {
-			log.Print(runErr)
+		if exit, ok := err.(*exec.ExitError); ok {
+			failure.detail = strings.TrimSpace(string(exit.Stderr))
 		}
+		startupError(failure)
 		return
 	}
 	if err = json.Unmarshal(output, &service); err != nil {

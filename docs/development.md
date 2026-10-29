@@ -33,7 +33,7 @@ npm run test:visual
 npm run verify:package
 ```
 
-`check` 包含类型检查、公共接口测试和网页/服务构建。浏览器测试使用隔离数据与无头 Chrome，不连接日用 Agent。截图和测试结果在 `test-results/`，下次运行会更新。
+`check` 包含类型检查、公共接口测试、Go 的 Node 查找测试和网页/服务构建。只验证 Node 查找可运行 `npm run test:go`，不会打开窗口。浏览器测试使用隔离数据与无头 Chrome，不连接日用 Agent。截图和测试结果在 `test-results/`，下次运行会更新。
 
 ## 桌面测试
 
@@ -60,7 +60,9 @@ npm run build:desktop
 open "dist-desktop/Review Console.app"
 ```
 
-发布构建自动包含网页和服务构建、打包 Node、Go 编译与本机签名校验。先在独立目录完成编译和签名，成功后才替换正式产物；失败时旧应用保持不变。运行 `.app` 不依赖系统 Node 或 Go。
+发布构建自动包含网页和服务构建、Go 编译与本机签名校验，不复制 Node、Node 许可证或 `runtime.json`。先在独立目录完成编译和签名，成功后才替换正式产物；失败时旧应用保持不变。构建接受 Node ≥22.19.0，`.node-version` 仍固定推荐开发版本。运行 `.app` 需要本机已有 Node ≥22.19.0，不需要 Go。
+
+分发 DMG 使用 UDZO 压缩；当前仍为本机 ad-hoc 签名，未做开发者签名或公证，下载后可能被 Gatekeeper 拦截。默认产物对应构建机器的 CPU 架构，不是 Universal 包；分享时需注明 Apple Silicon 或 Intel。
 
 若目标应用或它的后台服务仍在使用产物，构建会提前拒绝覆盖。按以下顺序更新：
 
@@ -73,9 +75,47 @@ open "dist-desktop/Review Console.app"
 
 `/review` 的应用查找顺序见 README。当前默认使用仓库的正式构建产物；测试包不是日用应用。发布产物不包含自动化入口，不能拿测试包交付。
 
+## Node 查找与配置
+
+桌面应用依次检查：
+
+1. `REVIEW_CONSOLE_NODE` 指定的可执行文件。
+2. `--node=/absolute/path/to/node` 启动参数；`/review` 自动传入 pi 的 `process.execPath`。
+3. PATH 中的 `node`。
+4. 常见安装位置：Homebrew、`~/.local/share/pi-node/current/bin/node`、Volta、nvm、fnm。fnm 只检查稳定安装目录，不检查临时 multishell 链接。
+5. 最后运行 `zsh -lic 'command -v node'`，读取登录 shell 配置。
+
+前两项是显式配置，无效或低于 22.19.0 时直接报错。自动查找会跳过不合格候选，使用第一个合格版本。每次版本探测最多 1 秒，shell 查找最多 2 秒，总查找预算约 5 秒。失败时原生错误框优先显示恢复方法，完整查找诊断写入 stderr，并可通过“复制信息并退出”保留。关闭错误框后退出，不启动新服务，也不停止已有服务。
+
+Finder 不继承终端的完整 PATH。通常安装 Homebrew Node 后即可自动找到：
+
+```sh
+brew install node
+```
+
+没有 Homebrew 时可从 https://nodejs.org/zh-cn/download 安装 Node.js ≥22.19.0；已通过 Homebrew 安装但版本过旧时运行 `brew upgrade node`。已安装但无法找到时，先在终端运行 `command -v node` 获取实际路径；设置环境变量只指定已有安装，不会安装 Node。
+
+需要固定其他位置时，终端启动可使用环境变量；Finder 启动可设置当前登录会话的环境后重新打开应用：
+
+```sh
+REVIEW_CONSOLE_NODE="/absolute/path/to/node" "dist-desktop/Review Console.app/Contents/MacOS/ReviewConsole"
+launchctl setenv REVIEW_CONSOLE_NODE "/absolute/path/to/node"
+```
+
+将示例路径替换为实际 Node 可执行文件路径。`launchctl setenv` 仅作用于当前登录会话；取消固定位置用 `launchctl unsetenv REVIEW_CONSOLE_NODE`。
+
+显式配置失败时，错误框会标明来自 `REVIEW_CONSOLE_NODE` 还是 `--node`。环境变量覆盖启动参数：终端启动可用 `unset REVIEW_CONSOLE_NODE` 取消，Finder 启动可用上面的 `launchctl unsetenv` 取消；若 shell 配置文件中也设置了此变量，应一并删除对应配置。`--node` 配置错误则修正或移除该参数；`/review` 传入的路径来自 pi 正在使用的 Node。
+
+## 已安装应用的旧服务恢复
+
+窗口退出后后台服务仍可能运行。检测到旧构建时，错误信息会生成当前安装对应的停止命令，包含 Node、`cli.mjs` 和数据目录的绝对路径，不依赖 npm、源码目录或当前工作目录。
+
+先保存草稿并正常退出审查台，再在终端执行错误信息中的停止命令，随后重新打开应用。活跃 pi 会话需要 `/reload`。停止服务会短暂中断审查台连接，不终止 Agent，也不删除项目和轮次数据；显示错误本身不会自动停止服务。
+
 ## 排查与边界
 
-- “服务来自旧构建”：按上面的正常退出、停止服务、重新构建和启动流程处理，避免新旧网页与后端混用。
+- “Node 未安装、版本过旧或指定路径无效”：按错误框安装 Node ≥22.19.0 或修正 `REVIEW_CONSOLE_NODE`；Finder 配置见上节。显式配置错误不会被自动查找掩盖。
+- “服务来自旧构建”：源码开发按正常退出、停止服务、重新构建和启动流程处理；只安装 `.app` 时按错误信息中的停止命令恢复，避免新旧网页与后端混用。
 - 原生按键测试失败：先确认目标窗口和异步操作已准备好，检查是否有输入法候选；保留错误与测试结果，不直接认定产品回归。
 - 新报错：先保存错误原文、操作步骤、构建版本，再复现。过去那次没有原文的报错未复现，没有证据支持预先改代码。
 - Git 提交详情必须继续返回全部 diff；读取通过 raw diff 和 `cat-file` 批处理，避免每个文件版本启动多个串行 Git。`test/history-batch.test.ts` 保护查询次数和比较语义。

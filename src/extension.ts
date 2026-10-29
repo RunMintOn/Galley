@@ -123,7 +123,7 @@ export default function reviewConsole(pi: ExtensionAPI) {
         let desktop = "";
         for (const path of candidates) { try { await access(join(path, "Contents/MacOS/ReviewConsole")); desktop = path; break; } catch { /* Try the next installation location. */ } }
         if (!desktop) await post("focus", { sessionId: ctx.sessionManager.getSessionId() });
-        const result = await pi.exec("open", desktop ? ["-n", "-a", desktop, "--args", url] : [url], { timeout: 10000 });
+        const result = await pi.exec("open", desktop ? ["-n", "-a", desktop, "--args", url, `--node=${process.execPath}`] : [url], { timeout: 10000 });
         if (result.code !== 0) ctx.ui.notify(url, "warning");
       } catch (e) { ctx.ui.notify(`无法打开审查台：${e instanceof Error ? e.message : String(e)}`, "error"); }
     },

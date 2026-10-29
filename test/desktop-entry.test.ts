@@ -31,6 +31,7 @@ test("/review launches the installed app with a single-instance session handoff"
     const target=new URL(calls[0][1][4]);
     assert.equal(target.origin,service.origin);
     assert.equal(new URLSearchParams(target.hash.slice(1)).get("session"),"entry-session");
+    assert.equal(calls[0][1][5],`--node=${process.execPath}`);
   } finally {
     await handlers.get("session_shutdown")!();await service.close();
     if(previous.state===undefined)delete process.env.REVIEW_CONSOLE_STATE;else process.env.REVIEW_CONSOLE_STATE=previous.state;

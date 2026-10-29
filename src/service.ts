@@ -1,5 +1,5 @@
 import { mkdir, readFile, rm, stat } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
 import { homedir } from "node:os";
@@ -8,6 +8,7 @@ import { BUILD } from "./build.ts";
 export interface Service { origin: string; token: string; pid: number }
 export const stateDirectory = () => process.env.REVIEW_CONSOLE_STATE || join(process.env.PI_CODING_AGENT_DIR || join(homedir(), ".pi/agent"), "review-console");
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+const shellQuote = (value: string) => "'" + value.replaceAll("'", "'\\''") + "'";
 async function existing(directory: string): Promise<Service | undefined> {
   try {
     const service: Service = JSON.parse(await readFile(join(directory, "service.json"), "utf8"));
@@ -20,7 +21,9 @@ async function existing(directory: string): Promise<Service | undefined> {
       const health = await (await fetch(service.origin + "/health", { signal: AbortSignal.timeout(1200) })).json();
       if (health.app !== "pi-review-console") return;
       if (health.build !== BUILD) {
-        const error = new Error("审查台服务来自旧构建。请运行 npm run stop，再 npm start，然后 /reload。");
+        const command = `REVIEW_CONSOLE_STATE=${shellQuote(resolve(directory))} ${shellQuote(process.execPath)} ${shellQuote(fileURLToPath(new URL("./cli.mjs", import.meta.url)))} stop`;
+        const error = new Error("审查台服务来自旧构建。\n请先保存草稿并正常退出审查台，再在终端执行：\n" + command +
+          "\n\n随后重新打开审查台，并在活跃 pi 会话中运行 /reload。\n此操作会短暂中断审查台连接，但不终止 pi Agent，也不删除项目和轮次数据。");
         error.name = "ServiceVersionError"; throw error;
       }
       return service;

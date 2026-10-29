@@ -1,10 +1,10 @@
-import { cp, mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
-import { dirname, resolve, join } from "node:path";
+import { cp, mkdir, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
+import { resolve, join } from "node:path";
 import { execFileSync } from "node:child_process";
 
 if (process.platform !== "darwin") throw new Error("本轮仅构建 macOS 应用");
-const nodeVersion = (await readFile(".node-version", "utf8")).trim();
-if (process.versions.node !== nodeVersion) throw new Error("桌面包需要 Node " + nodeVersion + "；请在项目目录运行 fnm install && fnm use 后重试");
+const [major, minor] = process.versions.node.split(".").map(Number);
+if (major < 22 || (major === 22 && minor < 19)) throw new Error("桌面构建需要 Node 22.19.0 或更高版本；请在项目目录运行 fnm install && fnm use 后重试");
 const e2e = process.argv.includes("--e2e");
 const name = e2e ? "Review Console Test" : "Review Console";
 const output = resolve(e2e ? "dist-desktop-test" : "dist-desktop"), destination = join(output, name + ".app");
@@ -21,9 +21,6 @@ try {
   const app = join(staging, name + ".app"), contents = join(app, "Contents"), resources = join(contents, "Resources");
   await mkdir(join(contents, "MacOS"), { recursive: true }); await mkdir(resources, { recursive: true });
   await cp("dist", join(resources, "backend"), { recursive: true });
-  await cp(process.execPath, join(resources, "node"));
-  const license = join(dirname(dirname(process.execPath)), "LICENSE");
-  await cp(license, join(resources, "NODE-LICENSE.txt"));
   const go = process.env.GO_BINARY || "go";
   const tags = e2e ? ["-tags", "e2e"] : [];
   execFileSync(go, ["build", ...tags, "-trimpath", "-o", join(contents, "MacOS/ReviewConsole"), "."], { cwd: "desktop", stdio: "inherit" });
@@ -42,7 +39,6 @@ try {
 <key>NSAppTransportSecurity</key><dict><key>NSAllowsLocalNetworking</key><true/></dict>
 </dict></plist>
 `);
-  await writeFile(join(resources, "runtime.json"), JSON.stringify({ nodeVersion, arch: process.arch }, null, 2));
   execFileSync("codesign", ["--force", "--deep", "--sign", "-", app], { stdio: "inherit" });
   execFileSync("codesign", ["--verify", "--deep", "--strict", app], { stdio: "inherit" });
   await rm(destination, { recursive: true, force: true });

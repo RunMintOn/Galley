@@ -4,7 +4,7 @@
 
 ## macOS 桌面应用
 
-本轮提供 mygo 系统 WKWebView 外壳：四栏审查台与独立临时文档窗口，共用现有本地服务。应用随包携带 Node，无需另装 Node 才能运行；业务后端仍为现有 JavaScript，不是 Go 重写。
+本轮提供 mygo 系统 WKWebView 外壳：四栏审查台与独立临时文档窗口，共用现有本地服务。应用不内置 Node，运行需要本机已有 Node ≥22.19.0（可复用 pi 自带运行时），不需要 Go；业务后端仍为现有 JavaScript，不是 Go 重写。
 
 源码构建需要 Go（最低版本见 `desktop/go.mod`）、Node（版本见 `.node-version`）及本仓库 npm 依赖。首次准备环境、测试和安全更新流程见 [开发与交接](docs/development.md)。
 
@@ -17,6 +17,10 @@ open "dist-desktop/Review Console.app"
 Go 使用 PATH 中的正常安装，不依赖临时工具链。构建包含网页层，产物为本机签名的 `.app`，不是已公证的公众发行包。无需安装 mygo CLI。正在使用中的应用会阻止覆盖，请按开发文档正常退出并停止旧服务后更新。
 
 `/review` 优先寻找 `REVIEW_CONSOLE_APP` 指定位置、`~/Applications/Review Console.app`、`/Applications/Review Console.app`，再找仓库构建产物；找到后启动或唤回桌面审查台，未安装时保留浏览器入口。配置 `REVIEW_CONSOLE_APP` 时须给完整 `.app` 路径。
+
+`/review` 会把 pi 正在使用的 Node 路径传给桌面应用。独立启动时，应用自动查找 PATH 和常见安装位置；可用 `REVIEW_CONSOLE_NODE` 指定 Node 可执行文件的绝对路径。显式指定的 Node 无效或过旧时会直接报错，不自动改用其他版本。错误框会说明安装、更新或取消错误配置的方法；“复制信息并退出”可保留完整诊断。Finder 的环境配置与完整查找顺序见 [开发与交接](docs/development.md#node-查找与配置)。
+
+只安装 `.app` 的用户遇到“服务来自旧构建”时，按错误信息保存草稿并正常退出，再在终端执行其中的停止命令，随后重新打开应用。该命令使用已安装的 Node 和后端，不需要源码目录；不会终止 pi Agent 或删除数据。
 
 - 从第二栏底部或 File 菜单打开临时文档窗口，可与审查台同时使用。
 - 临时窗口支持 Markdown Source/Split/Preview、文本 Diff、多标签与横纵排列；`Cmd+T` 新建 Markdown，`Cmd+Shift+T` 新建 Diff，`Cmd+W` 关闭标签，`Cmd+1…9` 切换。

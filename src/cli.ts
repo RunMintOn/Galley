@@ -11,6 +11,12 @@ if (process.argv[2] === "stop") {
   if (!result.ok) throw new Error("服务身份验证失败，未停止");
   console.log("审查台服务已停止");
 } else {
-  const service = await ensureService();
-  console.log(process.argv[2] === "--json" ? JSON.stringify(service) : `${service.origin}/#token=${service.token}`);
+  try {
+    const service = await ensureService();
+    console.log(process.argv[2] === "--json" ? JSON.stringify(service) : `${service.origin}/#token=${service.token}`);
+  } catch (error) {
+    if (!(error instanceof Error) || error.name !== "ServiceVersionError") throw error;
+    console.error(error.message);
+    process.exitCode = 1;
+  }
 }
