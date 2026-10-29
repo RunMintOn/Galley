@@ -19,7 +19,7 @@ let savingFile = false;
 let sourceOpen = false;
 let disposeHistory;
 let socket;
-let reconnectTimer, stopped = false, inputSession = "", sending = false, pasted = false;
+let reconnectTimer, stopped = false, inputSession = "", sending = false, temporaryPreview = false;
 const drafts = new Map();
 let foreground = document.visibilityState === "visible" && document.hasFocus();
 const expanded = new Set([""]);
@@ -122,7 +122,7 @@ async function refresh() {
   if (!state.sessions.some(s => s.id === state.session && s.root === state.root)) state.session = state.sessions.filter(s => s.root === state.root).at(-1)?.id || "";
   const selected = session();
   const latest = selected?.rounds.at(-1)?.id || "";
-  const wasFollowing = !editor && !pasted && !sourceOpen && (!state.round || state.round === previousLatest);
+  const wasFollowing = !editor && !temporaryPreview && !sourceOpen && (!state.round || state.round === previousLatest);
   if (wasFollowing) state.round = latest;
   renderProjects();
   $("sessions").replaceChildren(...state.sessions.filter(s => s.root === state.root).map(s => option(s.id, s.title)));
@@ -145,8 +145,8 @@ async function refresh() {
   const at = rounds.findIndex(r => r.id === state.round);
   $("previous").disabled = at <= 0; $("next").disabled = at < 0 || at === rounds.length - 1;
   $("rounds").disabled = !rounds.length;
-  $("latest").hidden = state.round === latest && !pasted;
-  $("reading-state").textContent = pasted ? "Temporary preview" : state.round === latest ? "Latest reply" : "Reading history";
+  $("latest").hidden = state.round === latest && !temporaryPreview;
+  $("reading-state").textContent = temporaryPreview ? "Temporary preview" : state.round === latest ? "Latest reply" : "Reading history";
   if (state.data?.id !== state.round || state.data?.sessionId !== state.session) await loadRound();
 }
 async function chooseProject(root) {
@@ -216,7 +216,7 @@ async function loadRound() {
   const data = await api(`round?session=${encodeURIComponent(state.session)}&id=${encodeURIComponent(state.round)}`);
   if (current !== generation) return;
   state.data = data;
-  pasted = false;
+  temporaryPreview = false;
   $("show-source").textContent = sourceOpen ? "Hide source" : "Show source";
   $("reply-source").value = data.reply;
   renderer.render(data.reply || data.replyError || "本轮没有最终回复");
@@ -385,7 +385,7 @@ function toggleSource() {
 $("show-source").onclick = toggleSource;
 $("close-source").onclick = () => { setSource(false); run(recheckFile)(); };
 $("reply-source").oninput = () => {
-  pasted = true; $("latest").hidden = false; $("reading-state").textContent = "Temporary preview";
+  temporaryPreview = true; $("latest").hidden = false; $("reading-state").textContent = "Temporary preview";
   clearTimeout(renderTimer); renderTimer = setTimeout(() => renderer.render($("reply-source").value), 200);
 };
 function themeControls() {
@@ -412,12 +412,24 @@ $("paper").onchange = () => {
   $("reply-pane").dataset.paper = $("paper").value;
   localStorage.setItem(document.documentElement.classList.contains("dark") ? "review-dark-paper" : "review-light-paper", $("paper").value);
 };
-document.querySelectorAll("[data-collapse]").forEach(b => b.onclick = () => {
-  const pane = $(b.dataset.collapse); const collapsed = pane.classList.toggle("collapsed");
-  if (pane.id === "content-pane") $("files-pane").classList.toggle("collapsed", collapsed);
-  if (pane.id === "files-pane" && !collapsed) $("content-pane").classList.remove("collapsed");
-  const widths = ["projects-pane","files-pane","content-pane","reply-pane"].map((id,i) => $(id).classList.contains("collapsed") ? (i === 2 ? "0px" : "40px") : ["var(--projects-width,176px)","var(--files-width,236px)","minmax(260px,500fr)","minmax(300px,528fr)"][i]);
-  $("console").style.gridTemplateColumns = widths.join(" ");
+document.querySelectorAll("[data-collapse]").forEach(b => {
+  b.setAttribute("aria-controls", b.dataset.collapse);
+  b.setAttribute("aria-expanded", "true");
+  b.onclick = () => {
+    const pane = $(b.dataset.collapse); const collapsed = pane.classList.toggle("collapsed");
+    if (pane.id === "content-pane") $("files-pane").classList.toggle("collapsed", collapsed);
+    if (pane.id === "files-pane" && !collapsed) $("content-pane").classList.remove("collapsed");
+    const widths = ["projects-pane","files-pane","content-pane","reply-pane"].map((id,i) => $(id).classList.contains("collapsed") ? (i === 2 ? "0px" : "40px") : ["var(--projects-width,176px)","var(--files-width,236px)","minmax(260px,500fr)","minmax(300px,528fr)"][i]);
+    $("console").style.gridTemplateColumns = widths.join(" ");
+    const names = { "projects-pane": "项目栏", "files-pane": "文件树", "content-pane": "内容", "reply-pane": "回复" };
+    document.querySelectorAll("[data-collapse]").forEach(control => {
+      const open = !$(control.dataset.collapse).classList.contains("collapsed");
+      control.setAttribute("aria-expanded", String(open));
+      control.setAttribute("aria-label", (open ? "收起" : "展开") + names[control.dataset.collapse]);
+      control.title = control.getAttribute("aria-label");
+      if (control.dataset.collapse === "reply-pane") control.textContent = open ? "›" : "‹";
+    });
+  };
 });
 document.addEventListener("keydown", run(async e => {
   if (e.defaultPrevented) return;
@@ -440,7 +452,7 @@ document.addEventListener("paste", e => {
   if (e.target.closest("input,textarea,select,[contenteditable=true]")) return;
   const text = e.clipboardData?.getData("text/plain");
   if (!text) return;
-  e.preventDefault(); pasted = true;
+  e.preventDefault(); temporaryPreview = true;
   $("latest").hidden = false; $("reading-state").textContent = "Temporary preview";
   $("reply-source").value = text; renderer.render(text);
   notice("临时预览，不属于当前轮次；选择轮次可返回");

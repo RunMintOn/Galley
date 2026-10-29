@@ -157,7 +157,6 @@ export function mountDiff(root, file, onOpen) {
     const b=event.target.closest("button");
     if(!b)return;
     if(b.dataset.layout){layout=b.dataset.layout;render();}
-    if(b.dataset.nav)nav(Number(b.dataset.nav));
     if(b.hasAttribute("data-open"))onOpen(file.path);
     if(b.dataset.fold){
       const rows=diffs.querySelectorAll('tr.folded[data-fold="'+b.dataset.fold+'"]');

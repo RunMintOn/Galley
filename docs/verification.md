@@ -1,5 +1,7 @@
 # Review Console 验证记录
 
+本文件记录第一版功能检查，不代表当时已完成界面验收。后续按 Paper 与原 VisualReply 进行的界面还原、交互修复及截图对照见 `docs/ui-verification.md`。
+
 日期：2026-10-29（CST）。实现分支：`integration/review-console`。
 
 环境：macOS arm64、Node v22.23.2、pi 1.4.0、隔离无头 Chrome 156.0.8078.73。没有付费模型调用，没有操作用户桌面焦点，没有修改旧插件或日用配置。

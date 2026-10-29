@@ -100,6 +100,7 @@ try {
   await shoot("01-review");
   await page.locator('.content-header [data-collapse="content-pane"]').click();
   assert.equal(await page.locator("#reply-pane").evaluate(node => node.getBoundingClientRect().width), 1224);
+  assert.equal(await page.locator('.rail-controls [data-collapse="content-pane"]').getAttribute("aria-expanded"), "false");
   await shoot("02-reply-focus");
   await page.locator('.rail-controls [data-collapse="content-pane"]').click();
   await page.locator('[data-collapse="reply-pane"]').click();
