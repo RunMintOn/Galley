@@ -25,7 +25,7 @@ type Desktop struct{}
 // PickFolder opens the system folder chooser so adding a project never asks the
 // reader to type an absolute path by hand.
 func (Desktop) PickFolder(ctx context.Context) (string, error) {
-	paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{Title: "选择项目目录", ButtonLabel: "添加", Directory: true, Parent: review})
+	paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{Title: "选择项目目录", ButtonLabel: "添加", Directory: true, Parent: mygo.CallerWindow(ctx)})
 	if err != nil || len(paths) == 0 {
 		return "", err
 	}

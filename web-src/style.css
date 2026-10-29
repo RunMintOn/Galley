@@ -7,7 +7,6 @@
   --diff-add-bg: #10241a; --diff-del-bg: #2a1518; --add-ink: #8fe3b6; --del-ink: #f4a3a7;
   --ui: -apple-system, "SF Pro Text", "Helvetica Neue", system-ui, sans-serif;
   --mono: "SF Mono", ui-monospace, "JetBrains Mono", Menlo, monospace;
-  --serif: "Charter", "Iowan Old Style", Palatino, "Songti SC", serif;
   --prose-system: -apple-system, "SF Pro Text", "PingFang SC", "Helvetica Neue", system-ui, sans-serif;
   --prose-serif: "Charter", "Iowan Old Style", "Palatino Linotype", Palatino, "Songti SC", "Source Han Serif SC", Georgia, serif;
   --prose: var(--prose-system);

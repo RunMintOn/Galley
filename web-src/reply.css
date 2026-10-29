@@ -26,8 +26,6 @@
   --heading-2: oklch(0.340 0.085 172);
   --heading-3: oklch(0.400 0.090 305);
 
-  --serif: "Charter", "Iowan Old Style", "Palatino Linotype", Palatino,
-    "Songti SC", "Source Han Serif SC", Georgia, serif;
   --mono: "SFMono-Regular", "SF Mono", ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
 
   /* Existing token contract, remapped onto the paper palette. */
