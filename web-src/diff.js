@@ -126,7 +126,9 @@ export function mountDiff(root, file, onOpen) {
   }
 
 
-  root.innerHTML = '<div class="diff-controls"><button data-layout="unified">Unified</button><button data-layout="split">Split</button><button data-nav="-1">↑</button><button data-nav="1">↓</button><label><input type="checkbox" data-wrap checked> wrap</label><button data-open>完整文件</button></div><div class="diffs"></div>';
+  root.innerHTML = '<div class="diff-controls"><div class="layout-switch"><button data-layout="unified">Unified</button><button data-layout="split">Split</button></div><button data-open aria-label="完整文件" title="打开完整文件">↗</button><label><input type="checkbox" data-wrap checked> wrap</label></div><div class="diffs"></div>';
+  const controls = root.querySelector(".diff-controls");
+  const wrap = controls.querySelector("label");
   const diffs = root.querySelector(".diffs");
   let hunk = -1;
   function render() {
@@ -144,14 +146,14 @@ export function mountDiff(root, file, onOpen) {
       notice.textContent = file.notice || "无文本差异";
       diffs.append(notice);
     }
-    root.querySelectorAll("[data-layout]").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.layout===layout)));
+    controls.querySelectorAll("[data-layout]").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.layout===layout)));
   }
   const nav = (step) => {
     const hunks = [...diffs.querySelectorAll(".hunk")];
     hunk = Math.max(0,Math.min(hunks.length-1,hunk+step));
     hunks[hunk]?.scrollIntoView({block:"start"});
   };
-  root.addEventListener("click",event=>{
+  function action(event) {
     const b=event.target.closest("button");
     if(!b)return;
     if(b.dataset.layout){layout=b.dataset.layout;render();}
@@ -161,15 +163,18 @@ export function mountDiff(root, file, onOpen) {
       const rows=diffs.querySelectorAll('tr.folded[data-fold="'+b.dataset.fold+'"]');
       const open=b.textContent==="show";rows.forEach(r=>r.hidden=!open);b.textContent=open?"hide":"show";
     }
-  });
-  root.querySelector("[data-wrap]").onchange=e=>diffs.classList.toggle("nowrap",!e.target.checked);
-  const fit = () => { root.querySelector('[data-layout="split"]').disabled = root.clientWidth < 720; };
+  }
+  root.addEventListener("click", action);
+  controls.addEventListener("click", event => { event.stopPropagation(); action(event); });
+  controls.querySelector("[data-wrap]").onchange=e=>diffs.classList.toggle("nowrap",!e.target.checked);
+  const fit = () => { controls.querySelector('[data-layout="split"]').disabled = root.clientWidth < 720; };
   const observer = new ResizeObserver(fit);
   observer.observe(root); fit();
   render();
   return {
     nav,
-    destroy() { observer.disconnect(); },
+    controls, wrap,
+    destroy() { observer.disconnect(); controls.remove(); wrap.remove(); },
     goToLine(line) {
       const row = [...diffs.querySelectorAll("tr")].find(r => Number(r.querySelectorAll(".ln")[1]?.textContent) === line);
       row?.scrollIntoView({ block: "center" });

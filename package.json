@@ -25,6 +25,7 @@
     "typecheck": "tsc --noEmit",
     "test": "node --experimental-strip-types --test test/*.test.ts",
     "test:e2e": "node --experimental-strip-types test/browser.mts",
+    "test:visual": "node --experimental-strip-types test/visual.mts",
     "verify:package": "node --experimental-strip-types test/package.mts",
     "verify:migration": "node --experimental-strip-types test/migration.mts",
     "check": "npm run typecheck && npm test && npm run build",

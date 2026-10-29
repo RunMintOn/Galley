@@ -26,8 +26,19 @@ export async function showGitHistory(container, { root, api, onOpenCurrent, onEr
     const data = await call("log", { skip: String(skip), ...(selectedHash ? { hash: selectedHash } : {}) });
     if (!active() || request !== version) return;
     body.replaceChildren();
+    let lastDate = "";
     for (const commit of data.commits) {
-      const b = button(`${commit.hash.slice(0, 8)}  ${commit.subject}\n${commit.author} · ${new Date(commit.date).toLocaleString()}`, () => details(commit.hash));
+      const day = new Date(commit.date).toLocaleDateString();
+      if (day !== lastDate) {
+        const heading = document.createElement("h3"); heading.className = "git-day"; heading.textContent = day;
+        body.append(heading); lastDate = day;
+      }
+      const b = button("", () => details(commit.hash));
+      const hash = document.createElement("span"); hash.className = "commit-hash"; hash.textContent = commit.hash.slice(0, 7);
+      const subject = document.createElement("span"); subject.className = "commit-subject"; subject.textContent = commit.subject;
+      const date = document.createElement("span"); date.className = "commit-date"; date.textContent = new Date(commit.date).toLocaleDateString();
+      b.title = `${commit.author} · ${new Date(commit.date).toLocaleString()}`;
+      b.append(hash, subject, date);
       b.className = "commit-row"; body.append(b);
     }
     if (!data.commits.length) body.append(document.createTextNode("没有提交"));

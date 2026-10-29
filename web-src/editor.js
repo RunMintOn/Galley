@@ -16,6 +16,8 @@ export function createFileEditor(parent, file, onSave, onChange) {
     state: EditorState.create({
       doc: file.content,
       extensions: [
+        // Preserve disk line endings when CodeMirror serialises its normalised document.
+        EditorState.lineSeparator.of(file.content.match(/\r\n|\r|\n/)?.[0] || "\n"),
         access.of(permissions()), language, lineNumbers(), history(), highlightActiveLine(),
         syntaxHighlighting(defaultHighlightStyle), EditorView.lineWrapping,
         EditorView.contentAttributes.of({ "aria-label": "文件内容", tabindex: "0" }),
@@ -32,8 +34,8 @@ export function createFileEditor(parent, file, onSave, onChange) {
     }),
   });
   return {
-    get text() { return view.state.doc.toString(); },
-    get dirty() { return view.state.doc.toString() !== original; },
+    get text() { return view.state.sliceDoc(); },
+    get dirty() { return view.state.sliceDoc() !== original; },
     get editable() { return editable; },
     markSaved(content) { original = content; onChange(); },
     enable() { if (!file.partial) { editable = true; view.dispatch({ effects: access.reconfigure(permissions()) }); view.focus(); onChange(); } },

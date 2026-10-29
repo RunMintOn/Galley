@@ -149,8 +149,32 @@ function render(text) {
   });
 
   const failed = new Set();
+  const summary = document.createElement("p");
+  summary.className = "docmeta";
+  // Migrated from VisualReply: derive the reading summary from rendered content.
+  function updateSummary() {
+    const body = preview.cloneNode(true);
+    body.querySelector(".docmeta")?.remove();
+    const words = (body.textContent.match(/[\u4e00-\u9fa5]|[a-zA-Z]+/g) || []).length;
+    const parts = [];
+    if (env.diagrams.length) parts.push(`${env.diagrams.length} diagram${env.diagrams.length > 1 ? "s" : ""}`);
+    if (env.plots.length) parts.push(`${env.plots.length} plot${env.plots.length > 1 ? "s" : ""}`);
+    if (preview.querySelector(".katex")) parts.push("math");
+    if (words) parts.push(`${words} words`);
+    if (failed.size) parts.push(`${failed.size} failed`);
+    const swatch = document.createElement("span"); swatch.className = "swatch"; swatch.setAttribute("aria-hidden", "true");
+    summary.replaceChildren(swatch);
+    for (const text of parts) {
+      const rule = document.createElement("span"); rule.className = "rule"; rule.setAttribute("aria-hidden", "true");
+      const item = document.createElement("span"); item.textContent = text; summary.append(rule, item);
+    }
+    summary.dataset.state = failed.size ? "failed" : "done";
+    const h1 = preview.querySelector("h1");
+    if (h1) h1.after(summary); else preview.prepend(summary);
+  }
   const updateStatus = () => {
     preview.dataset.state = failed.size ? "failed" : "done";
+    updateSummary();
   };
   preview.querySelectorAll("[data-diagram]").forEach((container, index) => {
     mounted.push(mount(/** @type {HTMLElement} */ (container), env.diagrams[index], {

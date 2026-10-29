@@ -58,7 +58,8 @@ npm start
 - 文件只在手动保存时写盘，支持 `Cmd+S`。外部变化会阻止覆盖；取消冲突或导航对话框会保留当前草稿。
 - 编辑上限 2 MiB；更大文件按最多 256 KiB 分段只读预览。不是全量加载后只虚拟滚动。
 - Git 历史只读，包含提交、父版本比较、完整历史文件、分支引用及 blame。不执行 checkout、stage、commit 或 push。
-- 回复源码仅用于临时预览，不回写 pi 会话。阅读模式下粘贴 Markdown 可临时预览；选择轮次返回。
+- 点右栏 `Show source` 或按 `Cmd+Enter`，第三栏切换为当前回复的 Markdown 原文，第四栏继续预览。再次点击返回此前文件、diff 或历史；原有文件草稿保留。原文仅临时预览，不写入文件、不回写 pi 会话，不包含多 Tab 编辑模式。
+- 阅读模式下粘贴 Markdown 可临时预览；回到最新或选择轮次恢复会话回复。
 - `‹ / ›` 或左右方向键切换轮次；`Cmd+Enter` 切换回复源码；`j/k` 跳转改动块。编辑输入时不抢占这些阅读按键。
 - 输入框向选定的活会话发送原样文本。Enter 发送、Shift+Enter 换行；忙碌时不排队。未确认发送会保留草稿，不自动重发。
 
@@ -79,6 +80,7 @@ npm start
 ```sh
 npm run check
 npm run test:e2e
+npm run test:visual
 npm run verify:package
 npm run verify:migration -- /path/to/22-pi-compact-tool
 ```

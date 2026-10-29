@@ -16,12 +16,22 @@ const positions = new Map();
 let renderTimer;
 let editor, currentFile;
 let savingFile = false;
+let sourceOpen = false;
 let disposeHistory;
 let socket;
 let reconnectTimer, stopped = false, inputSession = "", sending = false, pasted = false;
 const drafts = new Map();
 let foreground = document.visibilityState === "visible" && document.hasFocus();
 const expanded = new Set([""]);
+const canvas = $("document").parentElement;
+function updateProgress() {
+  const max = canvas.scrollHeight - canvas.clientHeight;
+  $("progress").firstElementChild.style.transform = `scaleX(${max > 4 ? Math.min(canvas.scrollTop / max, 1) : 0})`;
+  $("progress").dataset.idle = String(max <= 4);
+}
+canvas.addEventListener("scroll", updateProgress, { passive: true });
+const progressObserver = new ResizeObserver(updateProgress);
+progressObserver.observe($("document"));
 function leaveFile() {
   if (savingFile) { notice("正在保存，请等待确认后再切换"); return false; }
   if (editor?.dirty && !confirm("存在未保存修改。放弃这些修改并切换？")) return false;
@@ -29,6 +39,14 @@ function leaveFile() {
   editor?.destroy(); editor = undefined; currentFile = undefined; return true;
 }
 function closeHistory() { disposeHistory?.(); disposeHistory = undefined; }
+function setSource(open) {
+  sourceOpen = open;
+  if (open && $("content-pane").classList.contains("collapsed")) document.querySelector('[data-collapse="content-pane"]').click();
+  for (const element of [$("content"), $("content-pane").querySelector(".content-header"), $("content-pane").querySelector("footer")]) element.hidden = open;
+  for (const id of ["source-header", "source-view", "source-footer"]) $(id).hidden = !open;
+  $("show-source").setAttribute("aria-expanded", String(open));
+  $("show-source").textContent = open ? "Hide source" : "Show source";
+}
 export function notice(message) { $("notice").textContent = message; }
 export async function api(path, body, method = body === undefined ? "GET" : "POST") {
   const response = await fetch("/api/" + path, {
@@ -45,17 +63,52 @@ function button(text, handler, className) {
   const b = document.createElement("button"); b.textContent = text; b.onclick = run(handler); if (className) b.className = className; return b;
 }
 function option(value, text) { const o = document.createElement("option"); o.value = value; o.textContent = text; return o; }
+function counts(added, deleted) {
+  return [["added", added, "+"], ["deleted", deleted, "−"]].filter(([, n]) => n).map(([className, n, sign]) => {
+    const span = document.createElement("span"); span.className = className; span.textContent = sign + n; return span;
+  });
+}
+function fileButton(path, action, stats) {
+  const b = button("", action, "file-button");
+  b.dataset.path = path; b.title = path;
+  const name = document.createElement("span"); name.className = "file-name";
+  const basename = path.split("/").at(-1);
+  const duplicate = stats && state.data?.report?.files.some(f => f.path !== path && f.path.split("/").at(-1) === basename);
+  name.textContent = stats && !duplicate ? basename : path;
+  b.append(name);
+  if (stats) {
+    const totals = document.createElement("span"); totals.className = "line-counts";
+    totals.append(...counts(stats.added, stats.deleted)); b.append(totals);
+  }
+  return b;
+}
+function selectFile(path) {
+  document.querySelectorAll("[data-path]").forEach(b => b.setAttribute("aria-current", String(b.dataset.path === path)));
+}
+function contentHeader(name = "", stats) {
+  $("content-name").textContent = name.split("/").at(-1);
+  $("content-name").title = name;
+  $("content-counts").replaceChildren(...(stats ? counts(stats.added, stats.deleted) : []));
+  $("content-actions").replaceChildren(); $("content-meta").replaceChildren();
+  $("content-footer-actions").replaceChildren(); $("content-position").textContent = "";
+  $("turn-tab").setAttribute("aria-pressed", String(state.mode === "turn"));
+  $("history-tab").setAttribute("aria-pressed", String(state.mode === "history"));
+}
 function renderProjects() {
   $("project-count").textContent = state.projects.length;
+  $("move-project").disabled = state.projects.findIndex(p => p.root === state.root) <= 0;
+  $("remove-project").disabled = !state.root;
   $("projects").replaceChildren(...state.projects.map(p => {
     const related = state.sessions.filter(s => s.root === p.root);
     const selected = related.find(s => s.id === state.session) || related.at(-1);
     const b = button("", () => chooseProject(p.root), "project");
     b.setAttribute("aria-current", String(p.root === state.root)); b.title = p.root;
-    const dot = document.createElement("span"); dot.className = "dot" + (related.some(s => s.state === "working") ? " working" : ""); dot.textContent = "●";
+    const dot = document.createElement("span");
+    dot.className = "dot" + (related.some(s => s.state === "working") ? " working" : related.some(s => s.state === "idle") ? " online" : "");
+    dot.title = related.some(s => s.state === "working") ? "工作中" : related.some(s => s.state === "idle") ? "空闲" : "离线";
     const label = document.createElement("span"); label.className = "project-name"; label.textContent = p.name;
-    const path = document.createElement("small"); path.textContent = p.root; label.append(path);
-    const count = document.createElement("span");
+    const path = document.createElement("small"); path.textContent = p.root.replace(/^\/Users\/[^/]+/, "~"); label.append(path);
+    const count = document.createElement("span"); count.className = "project-count";
     count.textContent = (selected?.rounds.find(r => selected.id === state.session && r.id === state.round) || selected?.rounds.at(-1))?.count ?? "—";
     b.append(dot, label, count); return b;
   }));
@@ -63,30 +116,42 @@ function renderProjects() {
 async function refresh() {
   const previousLatest = session()?.rounds.at(-1)?.id;
   const data = await api("projects");
-  state.projects = data.projects; state.sessions = data.sessions;
+  state.projects = data.projects;
+  state.sessions = data.sessions.filter(s => state.projects.some(p => p.root === s.root));
   if (!state.projects.some(p => p.root === state.root)) state.root = state.sessions.find(s => s.id === state.session)?.root || state.projects[0]?.root || "";
   if (!state.sessions.some(s => s.id === state.session && s.root === state.root)) state.session = state.sessions.filter(s => s.root === state.root).at(-1)?.id || "";
   const selected = session();
   const latest = selected?.rounds.at(-1)?.id || "";
-  const wasFollowing = !editor && !pasted && (!state.round || state.round === previousLatest);
+  const wasFollowing = !editor && !pasted && !sourceOpen && (!state.round || state.round === previousLatest);
   if (wasFollowing) state.round = latest;
   renderProjects();
   $("sessions").replaceChildren(...state.sessions.filter(s => s.root === state.root).map(s => option(s.id, s.title)));
   $("sessions").value = state.session;
+  $("sessions").disabled = !state.session;
   $("session-state").textContent = { offline: "离线", idle: "空闲", working: "工作中" }[selected?.state] || "无会话";
+  $("session-connection").dataset.connected = String(selected?.state === "idle" || selected?.state === "working");
+  $("session-connection").dataset.state = selected?.state || "offline";
+  $("toggle-input").disabled = !selected;
   if (inputSession !== state.session) {
     if (inputSession) drafts.set(inputSession, $("message-input").value);
     inputSession = state.session; $("message-input").value = drafts.get(inputSession) || "";
   }
   $("send").disabled = sending || selected?.state !== "idle";
   $("send-state").textContent = sending ? "发送中，等待 pi 确认…" : selected?.error || (selected?.state === "offline" ? "会话离线；可以写草稿" : "");
-  $("rounds").replaceChildren(...(selected?.rounds || []).map((r, i) => option(r.id, `${i + 1} · ${new Date(r.end).toLocaleTimeString()} · ${r.outcome}`)));
+  const rounds = selected?.rounds || [];
+  $("rounds").replaceChildren(...rounds.map((r, i) => { const o = option(r.id, `${i + 1} / ${rounds.length}`); o.title = `${new Date(r.end).toLocaleString()} · ${r.outcome}`; return o; }));
+  if (!rounds.length) $("rounds").append(option("", "0 / 0"));
   $("rounds").value = state.round;
-  $("latest").textContent = state.round === latest ? "最新" : "新结果 · 回到最新";
+  const at = rounds.findIndex(r => r.id === state.round);
+  $("previous").disabled = at <= 0; $("next").disabled = at < 0 || at === rounds.length - 1;
+  $("rounds").disabled = !rounds.length;
+  $("latest").hidden = state.round === latest && !pasted;
+  $("reading-state").textContent = pasted ? "Temporary preview" : state.round === latest ? "Latest reply" : "Reading history";
   if (state.data?.id !== state.round || state.data?.sessionId !== state.session) await loadRound();
 }
 async function chooseProject(root) {
   if (!leaveFile()) return;
+  setSource(false);
   closeHistory();
   state.root = root; state.session = ""; state.round = ""; state.data = null; state.mode = "turn";
   expanded.clear(); expanded.add("");
@@ -98,6 +163,7 @@ export function savePosition() {
 export function hasUnsavedChanges() { return savingFile || !!editor?.dirty; }
 export async function focusSession(hash) {
   if (!leaveFile()) return;
+  setSource(false);
   closeHistory(); state.mode = "turn";
   const target = new URLSearchParams(hash.slice(1));
   state.session = target.get("session") || state.session;
@@ -110,10 +176,17 @@ $("add-project").onclick = run(async () => {
   const added = await api("projects", { root }); await refresh();
   await chooseProject(added.root);
 });
+$("add-project-top").onclick = () => $("add-project").click();
+document.addEventListener("click", e => {
+  const menu = $("project-menu");
+  if (!menu.contains(e.target) || e.target.closest("button")) menu.open = false;
+});
 $("remove-project").onclick = run(async () => {
   if (!state.root || !confirm("从审查台移除此项目？不会删除磁盘文件。")) return;
   if (!leaveFile()) return;
+  setSource(false);
   closeHistory();
+  expanded.clear(); expanded.add("");
   await api("projects", { root: state.root }, "DELETE");
   state.round = ""; state.data = null; state.mode = "turn";
   await refresh(); await loadTree(); updateWatch();
@@ -132,10 +205,11 @@ async function loadRound() {
   state.data = null;
   $("changed").replaceChildren();
   $("file-count").textContent = "0";
-  if (state.mode === "turn") $("content").replaceChildren();
+  $("change-totals").replaceChildren(); $("rail-count").textContent = "";
+  if (state.mode === "turn") { $("content").replaceChildren(); contentHeader(); }
   $("reply-source").value = "";
   if (!state.session || !state.round) {
-    if (state.mode === "turn") $("content").textContent = "此项目尚无本轮报告；仍可浏览文件与历史。";
+    if (state.mode === "turn") { const empty = document.createElement("p"); empty.className = "empty"; empty.textContent = "此项目尚无本轮报告；仍可浏览文件与历史。"; $("content").replaceChildren(empty); }
     $("document").textContent = "尚无回复";
     return;
   }
@@ -143,35 +217,43 @@ async function loadRound() {
   if (current !== generation) return;
   state.data = data;
   pasted = false;
-  $("show-source").textContent = "源码";
+  $("show-source").textContent = sourceOpen ? "Hide source" : "Show source";
   $("reply-source").value = data.reply;
   renderer.render(data.reply || data.replyError || "本轮没有最终回复");
   $("document").parentElement.scrollTop = positions.get(data.sessionId + ":" + data.id) || 0;
   const report = data.report;
   $("file-count").textContent = report?.files.length || 0;
-  $("changed").replaceChildren(...(report?.files || []).map(f => button(`${f.path}  +${f.added} −${f.deleted}`, () => showDiff(f), "file-button")));
+  $("rail-count").textContent = report?.files.length || "";
+  $("change-totals").append(...counts(report?.added, report?.deleted));
+  $("changed").replaceChildren(...(report?.files || []).map(f => fileButton(f.path, () => showDiff(f), f)));
   if (state.mode === "turn") {
-    if (report?.files.length) showDiff(report.files[0]);
+    if (report?.files.length) showDiff(report.files[0], true);
     else $("content").textContent = data.notice || (report?.incomplete ? "报告不完整" : report ? "已追踪文件无净改动" : "本轮未捕获");
   }
 }
-function showDiff(file) {
+function showDiff(file, preserveSource = false) {
   if (!leaveFile()) return;
+  if (!preserveSource) setSource(false);
   closeHistory();
   generation++;
   state.mode = "turn"; state.file = file.path;
-  const root = document.createElement("div"); root.className = "diff-surface";
+  contentHeader(file.path, file); selectFile(file.path);
+  const root = document.createElement("div"); root.className = "diff-surface round-diff";
   $("content").replaceChildren(root);
   diff = mountDiff(root, file, path => openFile(path));
+  $("content-actions").append(diff.controls);
+  $("content-footer-actions").append(document.createTextNode("j / k"), diff.wrap);
   if (state.data?.report) {
     const report = state.data.report;
+    $("content-position").textContent = `${report.files.findIndex(f => f.path === file.path) + 1} / ${report.files.length} files`;
     const context = document.createElement("details");
-    const summary = document.createElement("summary"); summary.textContent = `本轮请求 · ${new Date(report.start).toLocaleString()}`;
+    const summary = document.createElement("summary"); summary.textContent = "ⓘ"; summary.setAttribute("aria-label", "本轮请求与捕获范围"); summary.title = "本轮请求与捕获范围";
+    const body = document.createElement("div");
     const prompts = document.createElement("pre"); prompts.textContent = report.prompts.join("\n\n") || "用户消息未捕获";
-    context.append(summary, prompts); context.className = "round-prompts"; root.prepend(context);
+    context.append(summary, body); body.append(prompts); context.className = "round-context"; $("content-meta").append(context);
     const coverage = document.createElement("p"); coverage.className = "coverage";
     coverage.textContent = "已捕获 Edit / Write / apply_patch 的净改动；命令和外部写入不在报告范围内。";
-    root.append(coverage);
+    body.append(coverage);
   }
   if (state.data?.report?.incomplete || state.data?.outcome !== "completed") {
     const warning = document.createElement("p"); warning.className = "notice";
@@ -180,11 +262,14 @@ function showDiff(file) {
 }
 async function openFile(path, line = 1, offset = 0) {
   if (!state.root || !leaveFile()) return;
+  setSource(false);
   closeHistory();
   const root = state.root, current = ++generation;
   const file = await api(`file?root=${encodeURIComponent(root)}&path=${encodeURIComponent(path)}&offset=${offset}`);
   if (current !== generation || root !== state.root) return;
   state.mode = "file"; currentFile = { ...file, root, line };
+  state.file = path; contentHeader(path); selectFile(path);
+  $("content-position").textContent = file.partial ? `字节 ${file.offset} / ${file.size}` : "UTF-8 · 手动保存";
   const holder = document.createElement("div"); holder.className = "file-view";
   const title = document.createElement("div"); title.className = "content-title"; title.textContent = path + (file.partial ? ` · 分段只读 · 字节 ${file.offset} / ${file.size}` : "");
   const toolbar = document.createElement("div"); toolbar.className = "file-toolbar";
@@ -249,7 +334,13 @@ async function loadTree() {
         });
         details.open = expanded.has(file);
         parent.append(details);
-      } else parent.append(button(item.name + (item.link ? " ↗" : ""), () => openFile(file), "file-button"));
+      } else {
+        const b = fileButton(file, () => openFile(file));
+        b.querySelector(".file-name").textContent = item.name + (item.link ? " ↗" : "");
+        b.classList.toggle("changed", !!state.data?.report?.files.some(f => f.path === file));
+        b.setAttribute("aria-current", String(state.file === file));
+        parent.append(b);
+      }
     }
     if (data.truncated) { const warning = document.createElement("p"); warning.textContent = "目录条目过多，仅显示前 2000 项"; parent.append(warning); }
   };
@@ -260,50 +351,82 @@ function updateWatch() {
   const paths = new Set(expanded);
   if (currentFile) paths.add(currentFile.path.includes("/") ? currentFile.path.slice(0, currentFile.path.lastIndexOf("/")) : "");
   socket.send(JSON.stringify({ type: "watch", root: foreground ? state.root : null, paths: [...paths] }));
+  $("watch-state").textContent = foreground && state.root ? "watching · 本地文件" : "本地文件";
 }
 async function recheckFile() {
-  if (!foreground || !currentFile || currentFile.partial || savingFile) return;
+  if (!foreground || !currentFile || currentFile.partial || savingFile || sourceOpen) return;
   const target = currentFile;
   const fresh = await api(`file?root=${encodeURIComponent(target.root)}&path=${encodeURIComponent(target.path)}`);
   if (currentFile !== target || fresh.version === target.version) return;
   if (editor?.dirty) notice("磁盘文件已变化；当前草稿保留，保存时需处理冲突");
   else await openFile(target.path, target.line);
 }
-async function chooseRound(id) { if (!leaveFile()) return; state.mode = "turn"; state.round = id; await loadRound(); await refresh(); }
+async function chooseRound(id) {
+  if (!leaveFile()) { $("rounds").value = state.round; return; }
+  closeHistory(); state.mode = "turn"; state.round = id; await loadRound(); await refresh();
+}
 $("sessions").onchange = run(async e => { if (!leaveFile()) { e.target.value = state.session; return; } state.session = e.target.value; state.round = ""; state.mode = "turn"; await refresh(); });
 $("rounds").onchange = run(e => chooseRound(e.target.value));
 $("previous").onclick = run(() => { const rounds = session()?.rounds || []; return chooseRound(rounds[Math.max(0, rounds.findIndex(r => r.id === state.round) - 1)]?.id || ""); });
 $("next").onclick = run(() => { const rounds = session()?.rounds || []; return chooseRound(rounds[Math.min(rounds.length - 1, rounds.findIndex(r => r.id === state.round) + 1)]?.id || ""); });
 $("latest").onclick = run(() => chooseRound(session()?.rounds.at(-1)?.id || ""));
-$("turn-tab").onclick = run(async () => { if (!leaveFile()) return; closeHistory(); state.mode = "turn"; await loadRound(); });
+$("turn-tab").onclick = run(async () => { if (!leaveFile()) return; setSource(false); closeHistory(); state.mode = "turn"; await loadRound(); });
 $("history-tab").onclick = run(async () => {
   if (!state.root || !leaveFile()) return;
+  setSource(false);
   closeHistory(); generation++; state.mode = "history";
+  contentHeader("Git 历史"); selectFile("");
   disposeHistory = await showGitHistory($("content"), { root: state.root, api, onOpenCurrent: path => openFile(path), onError: e => notice(e.message) });
 });
 function toggleSource() {
-  $("reply-source").hidden = !$("reply-source").hidden;
-  $("show-source").setAttribute("aria-expanded", String(!$("reply-source").hidden));
+  setSource(!sourceOpen);
+  if (!sourceOpen) run(recheckFile)();
 }
 $("show-source").onclick = toggleSource;
-$("reply-source").oninput = () => { clearTimeout(renderTimer); renderTimer = setTimeout(() => renderer.render($("reply-source").value), 200); };
+$("close-source").onclick = () => { setSource(false); run(recheckFile)(); };
+$("reply-source").oninput = () => {
+  pasted = true; $("latest").hidden = false; $("reading-state").textContent = "Temporary preview";
+  clearTimeout(renderTimer); renderTimer = setTimeout(() => renderer.render($("reply-source").value), 200);
+};
+function themeControls() {
+  const dark = document.documentElement.classList.contains("dark");
+  $("theme").innerHTML = dark
+    ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"/></svg>'
+    : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M20.5 14A9 9 0 0 1 10 3.5 9 9 0 1 0 20.5 14Z"/></svg>';
+  const papers = dark ? [["charcoal","Charcoal"],["slate","Slate"],["warm","Warm grey"]] : [["ivory","Ivory"],["white","White"],["warm","Warm grey"]];
+  $("paper").replaceChildren(...papers.map(([value, label]) => option(value, label)));
+  const saved = localStorage.getItem(dark ? "review-dark-paper" : "review-light-paper");
+  $("paper").value = papers.some(([value]) => value === saved) ? saved : papers[0][0];
+  $("reply-pane").dataset.paper = $("paper").value;
+}
 $("theme").onclick = () => {
   const dark = document.documentElement.classList.toggle("dark");
   $("reply-pane").classList.toggle("dark", dark);
   localStorage.setItem("review-theme", dark ? "dark" : "light");
+  themeControls();
   renderer.render($("reply-source").value);
 };
 if (localStorage.getItem("review-theme") === "light") { document.documentElement.classList.remove("dark"); $("reply-pane").classList.remove("dark"); }
+themeControls();
+$("paper").onchange = () => {
+  $("reply-pane").dataset.paper = $("paper").value;
+  localStorage.setItem(document.documentElement.classList.contains("dark") ? "review-dark-paper" : "review-light-paper", $("paper").value);
+};
 document.querySelectorAll("[data-collapse]").forEach(b => b.onclick = () => {
-  const pane = $(b.dataset.collapse); pane.classList.toggle("collapsed");
-  const widths = ["projects-pane","files-pane","content-pane","reply-pane"].map((id,i) => $(id).classList.contains("collapsed") ? "40px" : ["176px","236px","minmax(260px,1fr)","minmax(300px,1fr)"][i]);
+  const pane = $(b.dataset.collapse); const collapsed = pane.classList.toggle("collapsed");
+  if (pane.id === "content-pane") $("files-pane").classList.toggle("collapsed", collapsed);
+  if (pane.id === "files-pane" && !collapsed) $("content-pane").classList.remove("collapsed");
+  const widths = ["projects-pane","files-pane","content-pane","reply-pane"].map((id,i) => $(id).classList.contains("collapsed") ? (i === 2 ? "0px" : "40px") : ["var(--projects-width,176px)","var(--files-width,236px)","minmax(260px,500fr)","minmax(300px,528fr)"][i]);
   $("console").style.gridTemplateColumns = widths.join(" ");
 });
 document.addEventListener("keydown", run(async e => {
   if (e.defaultPrevented) return;
+  if (e.key === "Escape" && $("project-menu").open) { e.preventDefault(); $("project-menu").open = false; return; }
   if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && e.target.id !== "message-input") { e.preventDefault(); toggleSource(); return; }
   const typing = e.target.closest("input,textarea,select,[contenteditable=true]");
+  if ((e.metaKey || e.ctrlKey) && e.key === "o" && !typing) { e.preventDefault(); $("add-project").click(); return; }
   if ((e.metaKey || e.ctrlKey) && e.key === "s") {
+    if (sourceOpen) { e.preventDefault(); notice("回复原文仅临时预览，不写入文件或会话"); return; }
     if (editor && (!typing || e.target.closest(".editor-host"))) { e.preventDefault(); await saveFile(); }
     return;
   }
@@ -318,13 +441,14 @@ document.addEventListener("paste", e => {
   const text = e.clipboardData?.getData("text/plain");
   if (!text) return;
   e.preventDefault(); pasted = true;
-  $("show-source").textContent = "临时预览源码";
+  $("latest").hidden = false; $("reading-state").textContent = "Temporary preview";
   $("reply-source").value = text; renderer.render(text);
   notice("临时预览，不属于当前轮次；选择轮次可返回");
 });
 $("toggle-input").onclick = () => {
-  $("input-area").hidden = !$("input-area").hidden;
-  if (!$("input-area").hidden) $("message-input").focus();
+  $("message-panel").hidden = !$("message-panel").hidden;
+  $("toggle-input").setAttribute("aria-expanded", String(!$("message-panel").hidden));
+  if (!$("message-panel").hidden) $("message-input").focus();
 };
 $("message-input").oninput = () => drafts.set(inputSession, $("message-input").value);
 async function sendMessage() {
@@ -395,7 +519,7 @@ function connectEvents() {
 }
 window.addEventListener("pagehide", () => { stopped = true; clearTimeout(reconnectTimer); socket?.close(); });
 window.addEventListener("review-console-replaced", () => {
-  stopped = true; clearTimeout(reconnectTimer); socket?.close(); renderer.destroy(); editor?.destroy(); closeHistory();
+  stopped = true; clearTimeout(reconnectTimer); socket?.close(); progressObserver.disconnect(); renderer.destroy(); editor?.destroy(); closeHistory();
 });
 run(async () => {
   await api("auth", {});
