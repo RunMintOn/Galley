@@ -1,9 +1,7 @@
 :root {
   color-scheme: light;
 
-  /* Paper and ink. Ink stays slightly cool; the paper is warm, so headings read
-     against it instead of blending into a tint of the same hue.
-     `paper-*` are the three selectable stocks; `--paper` is the active one. */
+  /* Base renderer tokens; the shared application palette supplies active paper and ink. */
   --paper-ivory: oklch(0.966 0.012 85);
   --paper: var(--paper-ivory);
   --code-bg: color-mix(in oklab, var(--paper), var(--ink) 4%);

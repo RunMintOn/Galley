@@ -2,6 +2,30 @@
 
 一个窗口审查多个本地项目：项目 / 文件树 / 本轮改动或 Git 历史 / 回复。
 
+## macOS 桌面应用
+
+本轮提供 mygo 系统 WKWebView 外壳：四栏审查台与独立临时文档窗口，共用现有本地服务。应用随包携带 Node，无需另装 Node 才能运行；业务后端仍为现有 JavaScript，不是 Go 重写。
+
+源码构建需要 Go 1.27.3+、固定的 Node 22.23.2，以及本仓库 npm 依赖：
+
+```sh
+npm ci --legacy-peer-deps
+npm run build:desktop
+open "dist-desktop/Review Console.app"
+```
+
+Go 不在 PATH 时可用 `GO_BINARY=/absolute/path/to/go npm run build:desktop`。产物为本机临时签名的 `.app`，不是已公证的公众发行包。无需安装 mygo CLI 或重建前端工程。
+
+`/review` 优先寻找 `REVIEW_CONSOLE_APP` 指定位置、`~/Applications/Review Console.app`、`/Applications/Review Console.app`，再找仓库构建产物；找到后启动或唤回桌面审查台，未安装时保留浏览器入口。配置 `REVIEW_CONSOLE_APP` 时须给完整 `.app` 路径。
+
+- 从第二栏底部或 File 菜单打开临时文档窗口，可与审查台同时使用。
+- 临时窗口支持 Markdown Source/Split/Preview、文本 Diff、多标签与横纵排列；`Cmd+T` 新建 Markdown，`Cmd+Shift+T` 新建 Diff，`Cmd+W` 关闭标签，`Cmd+1…9` 切换。
+- 非空临时内容或真实文件草稿在关窗、退出前确认。临时内容不写盘、不恢复。
+- 关窗及 `Cmd+Q` 不停止后台服务或 Agent；停止服务仍使用下文 `npm run stop`。
+- 项目徽章表示所选会话最新轮次改动文件数，不是未读；Git 工作区分别比较 HEAD → index、index → working tree，未跟踪文本按新增。
+
+第二轮验证与限制见 [桌面验收记录](docs/redesign-verification.md)。
+
 ## 构建与安装
 
 需要 macOS、Node 22.19+ 和 pi 1.4。

@@ -23,6 +23,7 @@ type Desktop struct{}
 
 var service serviceInfo
 var review, scratch *mygo.Window
+var webSession *mygo.Session
 var quitting, quitPending, testMode bool
 var closing = map[int]bool{}
 
@@ -50,7 +51,8 @@ func command(w *mygo.Window, name string) {
 	}()
 }
 func canClose(w *mygo.Window) bool {
-	value, err := eval(w, "window.reviewDesktop?.canClose?.() ?? false")
+	// The bridge is installed before any editable content mounts; an unloaded page has no drafts.
+	value, err := eval(w, "window.reviewDesktop ? (window.reviewDesktop.canClose?.() ?? false) : true")
 	return err == nil && value == true
 }
 func configure(w *mygo.Window) {
@@ -122,7 +124,7 @@ func openReview(raw string) {
 			target = raw
 		}
 	}
-	review = mygo.NewWindow(mygo.WindowOptions{Title: "Review Console", URL: target, Width: 1440, Height: 950, MinWidth: 950, MinHeight: 600, Page: mygo.PageOptions{TrustedOrigins: []string{service.Origin}}})
+	review = mygo.NewWindow(mygo.WindowOptions{Title: "Review Console", URL: target, Width: 1440, Height: 950, MinWidth: 950, MinHeight: 600, Page: mygo.PageOptions{TrustedOrigins: []string{service.Origin}, Session: webSession}})
 	configure(review)
 }
 func openScratch() {
@@ -131,7 +133,7 @@ func openScratch() {
 		scratch.Focus()
 		return
 	}
-	scratch = mygo.NewWindow(mygo.WindowOptions{Title: "临时文档", URL: service.Origin + "/scratch", Width: 1280, Height: 850, MinWidth: 700, MinHeight: 500, Page: mygo.PageOptions{TrustedOrigins: []string{service.Origin}}})
+	scratch = mygo.NewWindow(mygo.WindowOptions{Title: "临时文档", URL: service.Origin + "/scratch", Width: 1280, Height: 850, MinWidth: 700, MinHeight: 500, Page: mygo.PageOptions{TrustedOrigins: []string{service.Origin}, Session: webSession}})
 	configure(scratch)
 }
 func targetArg(args []string) string {
@@ -187,6 +189,7 @@ func main() {
 	// Isolated test instances must not take over the user's running app.
 	if testMode {
 		mygo.App.SetName("Review Console Test")
+		webSession = mygo.NewEphemeralSession()
 	}
 	if !mygo.App.RequestSingleInstanceLock() {
 		return

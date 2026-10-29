@@ -99,6 +99,7 @@ export async function gitQuery(store: Store, operation: string, params: URLSearc
     if (!entry) throw new ConsoleError("工作区差异已变化，请刷新后重试", 404);
     const file: ChangedFile & { countable: boolean } = { path, status: "Modified", added: entry.added, deleted: entry.deleted, countable: entry.countable };
     try {
+      const present = { before: group !== "untracked" && (group !== "staged" || !!current.hash), after: true };
       const index = async (p: string) => {
         const size = Number((await execute(top, ["cat-file", "-s", ":" + p])).toString());
         if (size > 2 * 1024 * 1024) throw new Error("暂存文件超过 2 MiB");
@@ -106,28 +107,29 @@ export async function gitQuery(store: Store, operation: string, params: URLSearc
         if (data.includes(0)) throw new Error("二进制文件不提供文本差异");
         return new TextDecoder("utf-8", { fatal: true }).decode(data);
       };
-      const readIndex = (p: string) => index(p).catch(async e => {
+      const readIndex = (p: string, side: "before" | "after") => index(p).catch(async e => {
         const exists = await execute(top, ["ls-files", "--error-unmatch", "--", p]).then(() => true).catch(() => false);
         if (exists) throw e;
+        present[side] = false;
         return "";
       });
       const before = group === "untracked" || (group === "staged" && !current.hash) ? "" : group === "staged"
         ? await blob(base, entry.beforePath).catch(async e => {
           const found = (await execute(top, ["ls-tree", "-z", base, "--", entry.beforePath])).length;
-          if (found) throw e; return "";
-        }) : await readIndex(entry.beforePath);
+          if (found) throw e; present.before = false; return "";
+        }) : await readIndex(entry.beforePath, "before");
       let after = "";
-      if (group === "staged") after = await readIndex(entry.afterPath);
+      if (group === "staged") after = await readIndex(entry.afterPath, "after");
       else {
         try {
           const text = await readText(store, root, path);
           if (text.partial) throw new Error("文件超过 2 MiB");
           after = text.content;
-        } catch (e) { if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e; }
+        } catch (e) { if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e; present.after = false; }
       }
       file.diff = diffFile(path, before, after);
       file.added = file.diff.addedLines; file.deleted = file.diff.deletedLines;
-      file.status = !before ? "Added" : !after ? "Deleted" : "Modified";
+      file.status = !present.before ? "Added" : !present.after ? "Deleted" : "Modified";
     } catch (e) { file.status = "Unavailable"; file.countable = false; file.notice = e instanceof Error ? e.message : String(e); }
     return file;
   }

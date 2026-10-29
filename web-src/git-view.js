@@ -4,7 +4,8 @@ import { createFileEditor } from "./editor.js";
 export async function showGitHistory(container, { index, root, api, onOpenCurrent, onError }) {
   const pane = document.createElement("div"); pane.className = "git-view"; container.replaceChildren(pane);
   index.replaceChildren();
-  let stopped = false, skip = 0, ref = "", selected = "", parent = 0, serial = 0, listSerial = 0;
+  let stopped = false, skip = 0, ref = "", selected = "", parent = 0, serial = 0, listSerial = 0, logSerial = 0;
+  let workspaceSelection;
   let editor, diff;
   const call = (op, values = {}) => api("git/" + op + "?" + new URLSearchParams({ root, ...values }));
   const valid = request => !stopped && pane.isConnected && request === serial;
@@ -38,7 +39,7 @@ export async function showGitHistory(container, { index, root, api, onOpenCurren
     editor = createFileEditor(host, { ...file, partial: true }, () => {}, () => {});
   };
   async function details(hash, parentIndex = 0) {
-    selected = hash; parent = parentIndex;
+    selected = hash; parent = parentIndex; workspaceSelection = undefined;
     const request = ++serial;
     const data = await call("commit", { hash, parent: String(parent) }); if (!valid(request)) return;
     clear(); pane.classList.remove("historical-file"); pane.replaceChildren();
@@ -55,12 +56,14 @@ export async function showGitHistory(container, { index, root, api, onOpenCurren
       select.value = String(parent); select.onchange = () => details(hash, Number(select.value)).catch(onError); card.append(select);
     }
     pane.append(card);
-    let openBody;
+    let openBody, openToggle;
     for (const [i, file] of data.files.entries()) {
       const row = document.createElement("section"); row.className = "commit-file";
       const body = document.createElement("div"); body.hidden = true;
       const toggle = button(`${file.path}  ${stats(file)}`, () => {
-        const opening = body.hidden; clear(); if (openBody) openBody.hidden = true;
+        const opening = body.hidden; clear();
+        if (openBody) openBody.hidden = true;
+        openToggle?.setAttribute("aria-expanded", "false"); openToggle = toggle;
         body.hidden = !opening; toggle.setAttribute("aria-expanded", String(opening));
         if (!opening) return;
         const surface = document.createElement("div"); surface.className = "diff-surface"; body.replaceChildren(surface); openBody = body;
@@ -72,7 +75,8 @@ export async function showGitHistory(container, { index, root, api, onOpenCurren
   const chooseWorkspace = async (group, file) => {
     const request = ++serial;
     const data = await call("workspace-file", { group, path: file.path }); if (!valid(request)) return;
-    clear(); selected = ""; pane.classList.remove("historical-file"); pane.replaceChildren();
+    list.querySelectorAll(".commit-row").forEach(b => b.setAttribute("aria-current", "false"));
+    clear(); selected = ""; workspaceSelection = { group, path: file.path }; pane.classList.remove("historical-file"); pane.replaceChildren();
     const label = document.createElement("div"); label.className = "file-toolbar";
     label.textContent = { staged: "已暂存 · HEAD → index", unstaged: "未暂存 · index → working tree", untracked: "未跟踪 · 新增" }[group];
     const surface = document.createElement("div"); surface.className = "diff-surface"; pane.append(label, surface);
@@ -94,16 +98,25 @@ export async function showGitHistory(container, { index, root, api, onOpenCurren
       workspace.append(section);
     }
     if (!data.count) workspace.append(document.createTextNode("工作区干净"));
+    if (workspaceSelection) {
+      const { group, path } = workspaceSelection;
+      const file = data.groups.find(g => g.id === group)?.files.find(f => f.path === path);
+      if (file) await chooseWorkspace(group, file);
+      else { clear(); pane.textContent = "当前工作区差异已消失"; }
+    }
   }
   async function loadList() {
-    const data = await call("log", { skip: String(skip), ...(ref ? { hash: ref } : {}) }); if (stopped || !pane.isConnected) return;
+    const request = ++logSerial;
+    const data = await call("log", { skip: String(skip), ...(ref ? { hash: ref } : {}) }); if (stopped || !pane.isConnected || request !== logSerial) return;
     list.replaceChildren(); let previous = "";
-    const today = new Date().toLocaleDateString(), yesterday = new Date(Date.now() - 86400000).toLocaleDateString();
+    const yesterdayDate = new Date(); yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+    const today = new Date().toLocaleDateString(), yesterday = yesterdayDate.toLocaleDateString();
     for (const commit of data.commits) {
       const day = new Date(commit.date).toLocaleDateString();
       const group = day === today ? "今天" : day === yesterday ? "昨天" : "更早";
       if (group !== previous) { const h = document.createElement("h3"); h.className = "git-day"; h.textContent = group; list.append(h); previous = group; }
       const row = button("", () => details(commit.hash), "commit-row"); row.dataset.hash = commit.hash;
+      row.setAttribute("aria-current", String(selected === commit.hash));
       row.title = `${commit.author} · ${new Date(commit.date).toLocaleString()}`;
       for (const [className, text] of [["commit-subject", commit.subject], ["commit-hash", commit.hash.slice(0, 7)], ["commit-date", new Date(commit.date).toLocaleTimeString()], ["commit-stats", `+${commit.added} −${commit.deleted}${commit.unavailable ? " *" : ""}`]]) {
         const span = document.createElement("span"); span.className = className; span.textContent = text; row.append(span);
@@ -114,14 +127,14 @@ export async function showGitHistory(container, { index, root, api, onOpenCurren
     if (!data.commits.length) list.append(document.createTextNode("没有提交"));
     if (skip) list.append(button("上一页", () => { skip = Math.max(0, skip - 50); return loadList(); }));
     if (data.commits.length === 50) list.append(button("下一页", () => { skip += 50; return loadList(); }));
-    if (!selected && data.commits.length) await details(data.commits[0].hash);
+    if (!selected && !workspaceSelection && data.commits.length) await details(data.commits[0].hash);
   }
-  refs.onchange = () => { ref = refs.value; skip = 0; selected = ""; loadList().catch(onError); };
+  refs.onchange = () => { ref = refs.value; skip = 0; selected = ""; workspaceSelection = undefined; loadList().catch(onError); };
   try {
     const data = await call("refs"); if (!stopped) data.refs.forEach(r => refs.append(new Option(r.name, r.hash)));
     await refreshWorkspace(); await loadList();
   } catch (e) { if (!stopped && pane.isConnected) { pane.textContent = "Git 不可用：" + e.message; index.append(document.createTextNode("Git 不可用")); } }
-  const dispose = () => { stopped = true; serial++; listSerial++; clear(); };
-  dispose.refresh = refreshWorkspace;
+  const dispose = () => { stopped = true; serial++; listSerial++; logSerial++; clear(); };
+  dispose.refresh = async () => { await refreshWorkspace(); await loadList(); };
   return dispose;
 }

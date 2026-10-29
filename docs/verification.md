@@ -1,5 +1,7 @@
 # Review Console 验证记录
 
+第二轮 macOS 桌面化与视觉刷新见 [桌面验收记录](redesign-verification.md)；下文为第一版历史记录。
+
 本文件记录第一版功能检查，不代表当时已完成界面验收。后续按 Paper 与原 VisualReply 进行的界面还原、交互修复及截图对照见 `docs/ui-verification.md`。
 
 日期：2026-10-29（CST）。实现分支：`integration/review-console`。

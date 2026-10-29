@@ -38,8 +38,16 @@ try {
  await page.locator(".workspace-file").first().click();await page.locator(".file-toolbar",{hasText:"HEAD → index"}).waitFor();
  assert.match(await page.locator("#content").textContent(),/staged/);
  assert.doesNotMatch(await page.locator("#content").textContent(),/working/);
+ await page.locator(".workspace-file").nth(1).click();
+ await page.locator(".file-toolbar",{hasText:"index → working tree"}).waitFor();
+ await page.waitForFunction(()=>document.querySelector("#content").textContent.includes("working") && !document.querySelector("#content").textContent.includes("new working content"));
+ await writeFile(join(root,"note.md"),"new working content\n");
+ await page.evaluate(()=>window.dispatchEvent(new Event("focus")));
+ await page.waitForFunction(()=>document.querySelector("#content").textContent.includes("new working content"),undefined,{timeout:3000});
  await page.screenshot({path:join(shots,"git.png")});
- await page.click("#theme");await page.selectOption("#paper","ivory");await page.click("#theme");
+ await page.click("#theme");await page.screenshot({path:join(shots,"light-charcoal.png")});
+ await page.selectOption("#paper","ivory");await page.screenshot({path:join(shots,"light-ivory.png")});
+ await page.click("#theme");
  assert.equal(await page.locator("#paper").inputValue(),"ivory");
  await page.screenshot({path:join(shots,"ivory.png")});
  const scratch=await browser.newPage({viewport:{width:1280,height:850}});

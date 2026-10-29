@@ -95,7 +95,7 @@ kbd { font: 10px/1 var(--mono); color: var(--subtle); }
 .round-context pre { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; font: 12.5px/1.7 var(--ui); }
 .coverage { font-size: 10px; color: var(--subtle); margin-bottom: 0; }
 .diff-surface { background: var(--sheet); color: var(--muted); --bg: var(--sheet); --ink: #ededed; --fg: var(--ink); --add-bg: var(--diff-add-bg); --del-bg: var(--diff-del-bg); --bg-bar: var(--panel); --bg-soft: var(--panel); --bg-fold: var(--panel); --line: var(--border); --dim: var(--muted); --faint: var(--subtle); }
-html:not(.dark) .diff-surface { --ink: #1a1a1a; }
+html:not(.dark) .diff-surface { --ink: #1a1a1a; --add-bg: var(--diff-add-bg); --del-bg: var(--diff-del-bg); }
 .diff-controls { display: flex; align-items: center; gap: 3px; font: 10px/1.4 var(--ui); }
 .diff-controls .layout-switch { display: flex; border: 1px solid var(--border); border-radius: 6px; padding: 2px; }
 .diff-controls button { padding: 2px 5px; }
@@ -169,7 +169,7 @@ html:not(.dark) .diff-surface { --ink: #1a1a1a; }
 .reply-pane.collapsed > header > nav > [data-collapse] { display: inline-flex; width: 26px; height: 26px; border: 1px solid var(--hair); }
 /* The paper has its own palette; the application alone owns the .dark state. */
 .reply-pane { height: 100%; font: 17px/1.68 var(--serif); --paper: #f1f1f1; --ink: #1a1a1a; --ink-2: #545454; --ink-3: #8a8a8a; --code-ink: var(--ink); --heading-1: var(--ink); --heading-2: var(--ink); --heading-3: var(--ink); --accent: var(--ink-2); --hair: color-mix(in oklab, var(--ink) 11%, transparent); --hair-2: color-mix(in oklab, var(--ink) 19%, transparent); --code-bg: color-mix(in oklab, var(--ink) 6%, var(--paper)); --muted: var(--ink-2); background: var(--paper); color: var(--ink); color-scheme: light; container-type: inline-size; container-name: reply; }
-html.dark .reply-pane:not([data-paper=ivory]) { --paper: #1d1d1d; --ink: #ededed; --ink-2: #a8a8a8; --ink-3: #717171; color-scheme: dark; }
+html.dark .reply-pane:not([data-paper=ivory]) { --paper: #1d1d1d; --ink: #ededed; --ink-2: #a8a8a8; --ink-3: #717171; --heading-1: var(--ink); --heading-2: var(--ink); --heading-3: var(--ink); --accent: var(--ink-2); color-scheme: dark; }
 .reply-pane[data-paper=ivory] { --paper: #fcfcfa; }
 html.dark .reply-pane[data-paper=ivory] { --paper: #f8f8f6; }
 .reply-pane > .canvas { flex: 1; min-height: 0; overflow: auto; }

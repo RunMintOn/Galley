@@ -1,4 +1,5 @@
 Status: ready-for-agent
+Resolution: resolved
 
 # Review Console：视觉、结构与 macOS 桌面化（第二轮）
 
@@ -6,7 +7,7 @@ Status: ready-for-agent
 
 本规格已根据用户评审修订。两个界面与 macOS 桌面外壳属于同一批工作，可顺序实现，必须一起验收。`ready-for-agent` 表示需求已整理，不表示已获准开始实现。
 
-**用户已通过 implement-spec 授权实施全部任务。** 在单一集成分支按依赖推进，完成必要验证与审查后停下，不扩展范围或反复测试。真实桌面焦点/键鼠操作仍需单独许可；优先隔离或隐藏窗口。
+**本轮实现与必要验收已完成，停止继续开发。** 集成分支为 `integration/review-console-redesign`，用户已许可本轮测试窗口、焦点与原生键盘操作。详细证据与未专项验证的边界见 [桌面验收记录](../../docs/redesign-verification.md)。
 
 实施获准后先完成 01 的技术验证，再开展后续实现。若关键能力验证失败，记录证据并重新确认方案，不静默换框架或重写后端。
 
@@ -23,7 +24,7 @@ Status: ready-for-agent
 | [09](issues/09-native-integration.md) | 原生菜单、快捷键、关闭保护及唤回 | 02、05、06、07、08 |
 | [10](issues/10-joint-acceptance.md) | 两窗口联合验收与交付记录 | 02—09 |
 
-依赖仅表示实施先后，不使用 `Status` 伪装执行进度；开始和完成情况记在 Ticket 的检查项与 Comments 中。
+依赖仅表示实施先后；`Status` 是 triage 标签，`Resolution: resolved` 表示工作已关闭，检查项与 Comments 记录实际结果。全部 10 个 Ticket 已关闭，不再自动开展新任务。
 
 ## Problem Statement
 
@@ -237,7 +238,7 @@ Git 数据要求：
 
 这两个文件是可执行的规格：颜色值、间距、圆角、字号、行高、状态样式全部写在里面，用浏览器开发者工具直接量。**不要重新发明这些数值。**
 
-原型包含可点击的项目、Flat/Tree、Unified/Split/wrap、Review/Git、提交、Show source 和标签页演示。获准实施后先实际点验，区分演示逻辑和真实契约；现阶段仅做过源码摸排，尚未完成浏览器点验或桌面验证。
+原型包含可点击的项目、Flat/Tree、Unified/Split/wrap、Review/Git、提交、Show source 和标签页演示。获准实施后先实际点验，区分演示逻辑和真实契约；现已实际点验原型，并完成浏览器和真实 WKWebView 代表性验证；结果与边界见桌面验收记录。
 
 ### 与旧插件的关系
 

@@ -45,6 +45,8 @@ test("workspace keeps index and working-tree changes separate, including special
     assert.equal((await api("workspace")).groups[0].files[0].path, "renamed.md");
     const renameDiff = await api("workspace-file", {group:"staged",path:"renamed.md"});
     assert.equal(renameDiff.added, 0); assert.equal(renameDiff.deleted, 0);
+    await writeFile(join(root, "renamed.md"), "");
+    assert.equal((await api("workspace-file", {group:"unstaged",path:"renamed.md"})).status, "Modified", "清空文件不是删除文件");
     git("checkout", "--detach"); assert.equal((await api("head")).branch, "");
   } finally { await service.close(); }
 });
