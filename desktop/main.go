@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math"
 	"net/url"
 	"os"
 	"os/exec"
@@ -20,6 +21,16 @@ type serviceInfo struct {
 	Token  string `json:"token"`
 }
 type Desktop struct{}
+
+// PickFolder opens the system folder chooser so adding a project never asks the
+// reader to type an absolute path by hand.
+func (Desktop) PickFolder(ctx context.Context) (string, error) {
+	paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{Title: "选择项目目录", ButtonLabel: "添加", Directory: true, Parent: review})
+	if err != nil || len(paths) == 0 {
+		return "", err
+	}
+	return paths[0], nil
+}
 
 var service serviceInfo
 var review, scratch *mygo.Window
@@ -144,6 +155,23 @@ func targetArg(args []string) string {
 	}
 	return ""
 }
+
+// zoom keeps text readable across windows: the step applies to the focused
+// window only, and 0 restores 100%.
+func zoom(step float64) func(*mygo.MenuItem, *mygo.Window) {
+	return func(_ *mygo.MenuItem, w *mygo.Window) {
+		if w == nil {
+			return
+		}
+		page := w.Page()
+		factor := 1.0
+		if step != 0 {
+			factor = page.ZoomFactor() + step
+		}
+		factor = math.Round(math.Min(2, math.Max(0.5, factor))*10) / 10
+		page.SetZoomFactor(factor)
+	}
+}
 func menu() *mygo.Menu {
 	item := func(label, key, name string, temporary bool) *mygo.MenuItem {
 		return &mygo.MenuItem{Label: label, Accelerator: key, Click: func(_ *mygo.MenuItem, w *mygo.Window) {
@@ -180,7 +208,15 @@ func menu() *mygo.Menu {
 			{Label: "退出应用", Accelerator: "CmdOrCtrl+Q", Click: func(_ *mygo.MenuItem, _ *mygo.Window) { mygo.App.Quit() }},
 		}},
 		{Role: mygo.RoleEditMenu},
-		{Label: "View", Submenu: []*mygo.MenuItem{item("回复源码", "CmdOrCtrl+Enter", "source", false), item("上一轮", "", "previous", false), item("下一轮", "", "next", false)}},
+		{Label: "View", Submenu: []*mygo.MenuItem{
+			item("回复源码", "CmdOrCtrl+Enter", "source", false),
+			item("上一轮", "", "previous", false),
+			item("下一轮", "", "next", false),
+			{Type: mygo.MenuItemSeparator},
+			{Label: "放大", Accelerator: "CmdOrCtrl+=", Click: zoom(+0.1)},
+			{Label: "缩小", Accelerator: "CmdOrCtrl+-", Click: zoom(-0.1)},
+			{Label: "实际大小", Accelerator: "CmdOrCtrl+0", Click: zoom(0)},
+		}},
 		{Label: "Window", Submenu: tabs},
 	})
 }

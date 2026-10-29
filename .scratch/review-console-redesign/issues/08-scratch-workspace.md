@@ -15,7 +15,7 @@ Blocked by: 03, 05, 07
 ## Acceptance
 
 - [x] 先写行为测试；提供明确的 Markdown / Diff 新建入口、标签关闭、重命名以及横向/纵向排列切换，不复制 Prototype 工具栏。
-- [x] Markdown Source / Split / Preview 三态可切；复用渲染能力与纸色/衬线视觉，不接数学公式/图表，原始 HTML 继续关闭。
+- [x] Markdown Source / Split / Preview 三态可切；复用渲染能力与纸色视觉，原始 HTML 继续关闭。后续按用户验收补齐公式、Mermaid、函数图，见 `review-console-polish` 票据。
 - [x] Diff Edit 时两侧可编辑，Diff 时只读对照；复用 05 的配对规则，覆盖新增、删除、替换、不等长和空文本。
 - [x] 切标签、布局、显示模式或窗口焦点保留文本；默认标题取首行标题或 untitled，手工命名后不再自动覆盖。
 - [x] 非空标签关闭前确认，取消不丢内容；暴露窗口/应用退出所需的非空状态与确认动作，原生接线由 09 完成。

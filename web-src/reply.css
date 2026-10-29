@@ -45,7 +45,7 @@
   /* Highlight text keeps its own ink; only the band changes across themes. */
 
 
-  font: 17px/1.68 var(--serif);
+  font: 17px/1.68 var(--prose);
   background: var(--paper);
   color: var(--ink);
   -webkit-font-smoothing: antialiased;
@@ -219,7 +219,7 @@ button:disabled { opacity: 0.4; cursor: default; }
   border: 1px solid var(--hair-2);
   border-radius: 6px;
   background: var(--code-bg);
-  font: 400 15px/1.6 var(--serif);
+  font: 400 15px/1.6 var(--prose);
   overflow-y: auto;
 }
 #message-input:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
@@ -355,7 +355,7 @@ textarea:focus-visible { outline-offset: -2px; border-radius: 0; }
   overflow-wrap: anywhere;
   background: none;
   color: var(--ink);
-  font: 400 13px/1.35 var(--serif);
+  font: 400 13px/1.35 var(--prose);
 }
 #history-list button + button { border-top: 1px solid var(--hair); }
 #history-list button[aria-current="true"] {
@@ -469,7 +469,7 @@ footer {
   max-width: 1120px;
   margin: 0 auto;
   padding: 56px 48px 140px;
-  font-family: var(--serif);
+  font-family: var(--prose);
   font-size: 17px;
   line-height: 1.68;
   overflow-wrap: anywhere;

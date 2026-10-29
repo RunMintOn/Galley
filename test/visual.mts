@@ -97,12 +97,13 @@ try {
   await page.keyboard.press("Escape");
   assert.equal(await page.getByRole("button", { name: "移除当前项目", exact: true }).isVisible(), false);
   await shoot("01-review");
-  await page.locator('.content-header [data-collapse="content-pane"]').click();
-  assert.ok(await page.locator("#reply-pane").evaluate(node => node.getBoundingClientRect().width > 1000));
-  assert.equal(await page.locator('.rail-controls [data-collapse="content-pane"]').getAttribute("aria-expanded"), "false");
+  await page.locator('.content-pane .pane-toggle').click();
+  assert.ok(await page.locator("#reply-pane").evaluate(node => node.getBoundingClientRect().width > 900));
+  assert.ok(await page.locator("#files-pane").evaluate(node => node.getBoundingClientRect().width > 200), "收起内容栏保留文件栏");
+  assert.equal(await page.locator('.content-pane .rail-button').getAttribute("aria-expanded"), "false");
   await shoot("02-reply-focus");
-  await page.locator('.rail-controls [data-collapse="content-pane"]').click();
-  await page.locator('[data-collapse="reply-pane"]').click();
+  await page.locator('.content-pane .rail-button').click();
+  await page.locator('.reply-pane .pane-toggle').click();
   await page.waitForFunction(() => !document.querySelector('[data-layout="split"]').disabled);
   await shoot("03-diff-focus");
   await page.locator('[data-layout="split"]').click();
@@ -110,7 +111,7 @@ try {
   await page.click("#history-tab");
   await page.locator(".commit-row").first().waitFor();
   await shoot("04-history");
-  await page.locator('[data-collapse="reply-pane"]').click();
+  await page.locator('.reply-pane .rail-button').click();
   await page.click("#show-source");
   await page.fill("#reply-source", "# 临时预览\n\n" + reply);
   await page.waitForFunction(() => document.querySelector("#document h1")?.textContent === "临时预览");
@@ -125,7 +126,7 @@ try {
   await page.keyboard.press("ArrowRight");
   assert.equal(await page.inputValue("#rounds"), "round-1", "在只读文件中移动光标不能误切换轮次");
   await shoot("06-file");
-  await page.locator('.content-header [data-collapse="content-pane"]').click();
+  await page.locator('.content-pane .pane-toggle').click();
   await page.click("#show-source");
   assert.equal(await page.locator("#source-view").isVisible(), true);
   assert.ok(await page.locator("#content-pane").evaluate(node => node.getBoundingClientRect().width > 260));

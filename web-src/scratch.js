@@ -68,7 +68,7 @@ function render() {
     if (tab.view !== "source") {
       const article = document.createElement("article"); article.className = "markdown-body";
       paperRoot.replaceChildren(article); panes.append(paperRoot);
-      renderer = createReplyRenderer(article, { enhanced: false }); renderer.render(tab.text);
+      renderer = createReplyRenderer(article); renderer.render(tab.text);
     }
   } else if (tab.view === "edit") {
     textarea(tab, "before", "旧文本", panes); textarea(tab, "after", "新文本", panes);

@@ -20,6 +20,9 @@ Go 不在 PATH 时可用 `GO_BINARY=/absolute/path/to/go npm run build:desktop`�
 
 - 从第二栏底部或 File 菜单打开临时文档窗口，可与审查台同时使用。
 - 临时窗口支持 Markdown Source/Split/Preview、文本 Diff、多标签与横纵排列；`Cmd+T` 新建 Markdown，`Cmd+Shift+T` 新建 Diff，`Cmd+W` 关闭标签，`Cmd+1…9` 切换。
+- 临时窗口的预览与回复栏同一套渲染：公式、Mermaid、函数图都会渲染，原始 HTML 仍不执行。
+- 正文默认系统字体，可在回复栏或临时窗口切换系统 / 衬线 / 等宽，两个窗口共用同一选择。
+- 添加目录使用系统选择面板；`Cmd +`、`Cmd -`、`Cmd 0` 放大、缩小、复位当前窗口。
 - 非空临时内容或真实文件草稿在关窗、退出前确认。临时内容不写盘、不恢复。
 - 关窗及 `Cmd+Q` 不停止后台服务或 Agent；停止服务仍使用下文 `npm run stop`。
 - 项目徽章表示所选会话最新轮次改动文件数，不是未读；Git 工作区分别比较 HEAD → index、index → working tree，未跟踪文本按新增。

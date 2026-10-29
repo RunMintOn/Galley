@@ -88,13 +88,13 @@ try {
   assert.equal(await page.locator('[data-layout="split"]').isDisabled(), false);
   await page.click('[data-layout="split"]');
   assert.equal(await page.locator('[data-wrap]').isChecked(), true);
-  await page.click('[data-collapse="reply-pane"]');
+  await page.click('.reply-pane .pane-toggle');
   await page.waitForFunction(() => !document.querySelector('[data-layout="split"]').disabled);
   await page.click('[data-layout="split"]');
   const oldCell = await page.locator("td.content.delete").first().boundingBox();
   const newCell = await page.locator("td.content.insert").first().boundingBox();
   assert.ok(oldCell && newCell && newCell.x > oldCell.x && newCell.y === oldCell.y);
-  await page.click('[data-collapse="reply-pane"]');
+  await page.click('.reply-pane .rail-button');
   await page.click('[data-layout="unified"]');
   const pageCDP = await page.context().newCDPSession(page);
   const browserCDP = await browser.newBrowserCDPSession();
@@ -135,9 +135,9 @@ try {
   await page.selectOption("#sessions", "a");
   await page.selectOption("#rounds", "r1");
   await page.waitForFunction(() => document.querySelector("#content").textContent.includes("旧标题"));
-  await page.click('[data-collapse="reply-pane"]');
+  await page.click('.reply-pane .pane-toggle');
   assert.equal(await page.locator("#reply-pane").evaluate(el => Math.round(el.getBoundingClientRect().width)), 40);
-  await page.click('[data-collapse="reply-pane"]');
+  await page.click('.reply-pane .rail-button');
   await page.locator("#document a", { hasText: "README.md" }).click();
   await page.locator(".cm-content").waitFor();
   assert.match(await page.locator("#content").textContent(), /当前文件/);

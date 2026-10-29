@@ -28,7 +28,17 @@ try {
  assert.equal(await page.locator(".project-count").textContent(),"1");
  await page.selectOption("#rounds","old");await page.waitForFunction(()=>document.querySelector("#file-count").textContent==="0");
  assert.equal(await page.locator(".project-count").textContent(),"1");
- await page.selectOption("#rounds","latest");await page.click('[data-layout="split"]');
+ assert.equal(await page.locator("#changed-layout").isVisible(),false,"本轮无改动时不显示 Tree/Flat");
+ await page.click(".content-pane .pane-toggle");
+ assert.equal(await page.locator("#files-pane").evaluate(el=>el.classList.contains("collapsed")),false,"收起内容栏不连带收起文件栏");
+ await page.click(".content-pane .rail-button");
+ assert.equal(await page.locator("#content-pane").evaluate(el=>el.classList.contains("collapsed")),false);
+ await page.selectOption("#rounds","latest");await page.waitForFunction(()=>document.querySelector("#changed-layout").hidden===false);
+ await page.selectOption("#font","serif");
+ assert.equal(await page.evaluate(()=>document.documentElement.dataset.font),"serif");
+ assert.match(await page.locator("#document").evaluate(el=>getComputedStyle(el).fontFamily),/Charter/);
+ await page.selectOption("#font","system");
+ await page.click('[data-layout="split"]');
  assert.equal(await page.locator('[data-wrap]').isChecked(),true);
  assert.ok(await page.locator("#reply-pane").evaluate(el=>el.getBoundingClientRect().width>=360));
  await page.screenshot({path:join(shots,"review.png")});

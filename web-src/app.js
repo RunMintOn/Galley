@@ -50,7 +50,7 @@ function indexMode(git = false) {
 function closeHistory() { disposeHistory?.(); disposeHistory = undefined; indexMode(); }
 function setSource(open) {
   sourceOpen = open;
-  if (open && $("content-pane").classList.contains("collapsed")) document.querySelector('[data-collapse="content-pane"]').click();
+  if (open && $("content-pane").classList.contains("collapsed")) { setPane("files-pane", false); setPane("content-pane", false); }
   for (const element of [$("content"), $("content-pane").querySelector(".content-header"), $("content-pane").querySelector("footer")]) element.hidden = open;
   for (const id of ["source-header", "source-view", "source-footer"]) $(id).hidden = !open;
   $("show-source").setAttribute("aria-expanded", String(open));
@@ -187,7 +187,11 @@ export async function focusSession(hash) {
   state.round = ""; await refresh(); await loadTree(); updateWatch();
 }
 $("add-project").onclick = run(async () => {
-  const root = prompt("本地项目的完整目录路径");
+  // The desktop shell opens the system picker; the browser build keeps the
+  // text prompt, and a failed bridge call falls back to it rather than dying.
+  let root = "";
+  if (window.mygo) { try { root = await window.mygo.call("Desktop.PickFolder"); } catch { root = null; } }
+  if (root === null) root = prompt("本地项目的完整目录路径");
   if (!root) return;
   const added = await api("projects", { root }); await refresh();
   await chooseProject(added.root);
@@ -221,7 +225,7 @@ async function loadRound() {
   state.data = null;
   $("changed").replaceChildren();
   $("file-count").textContent = "0";
-  $("change-totals").replaceChildren(); $("rail-count").textContent = "";
+  $("change-totals").replaceChildren(); $("changed-layout").hidden = true;
   if (state.mode === "turn") { $("content").replaceChildren(); contentHeader(); }
   $("reply-source").value = "";
   if (!state.session || !state.round) {
@@ -239,7 +243,7 @@ async function loadRound() {
   $("document").parentElement.scrollTop = positions.get(data.sessionId + ":" + data.id) || 0;
   const report = data.report;
   $("file-count").textContent = report?.files.length || 0;
-  $("rail-count").textContent = report?.files.length || "";
+  $("changed-layout").hidden = !report?.files.length;
   $("change-totals").append(...counts(report?.added, report?.deleted));
   $("round-time").textContent = report ? new Date(report.start).toLocaleTimeString() + " – " + new Date(report.end).toLocaleTimeString() : "";
   renderChanged();
@@ -355,9 +359,11 @@ async function saveFile() {
     }
   } finally { savingFile = false; await recheckFile(); }
 }
+// The FILES heading only earns its space when there is a tree under it.
+const treeHeading = () => { document.querySelector(".tree-heading").hidden = !$("tree").children.length; };
 async function loadTree() {
   const root = state.root;
-  $("tree").replaceChildren();
+  $("tree").replaceChildren(); treeHeading();
   if (!root) return;
   const load = async (path, parent) => {
     const data = await api(`tree?root=${encodeURIComponent(root)}&path=${encodeURIComponent(path)}`);
@@ -390,6 +396,7 @@ async function loadTree() {
     if (data.truncated) { const warning = document.createElement("p"); warning.textContent = "目录条目过多，仅显示前 2000 项"; parent.append(warning); }
   };
   await load("", $("tree"));
+  treeHeading();
 }
 function updateWatch() {
   if (socket?.readyState !== WebSocket.OPEN) return;
@@ -437,26 +444,38 @@ $("reply-source").oninput = () => {
   clearTimeout(renderTimer); renderTimer = setTimeout(() => renderer.render($("reply-source").value), 200);
 };
 setupTheme($("reply-pane"), () => renderer.render($("reply-source").value));
-document.querySelectorAll("[data-collapse]").forEach(b => {
-  b.setAttribute("aria-controls", b.dataset.collapse);
-  b.setAttribute("aria-expanded", "true");
-  b.onclick = () => {
-    const pane = $(b.dataset.collapse); const collapsed = pane.classList.toggle("collapsed");
-    if (pane.id === "content-pane") $("files-pane").classList.toggle("collapsed", collapsed);
-    if (pane.id === "files-pane" && !collapsed) $("content-pane").classList.remove("collapsed");
-    const widths = ["projects-pane","files-pane","content-pane","reply-pane"].map((id,i) => $(id).classList.contains("collapsed") ? (i === 2 ? "0px" : "40px") : ["var(--projects-width,196px)","var(--files-width,248px)","minmax(280px,1fr)","minmax(360px,470px)"][i]);
-    if ($("content-pane").classList.contains("collapsed") && !$("reply-pane").classList.contains("collapsed")) widths[3] = "minmax(360px,1fr)";
-    $("console").style.gridTemplateColumns = widths.join(" ");
-    const names = { "projects-pane": "项目栏", "files-pane": "文件树", "content-pane": "内容", "reply-pane": "回复" };
-    document.querySelectorAll("[data-collapse]").forEach(control => {
-      const open = !$(control.dataset.collapse).classList.contains("collapsed");
-      control.setAttribute("aria-expanded", String(open));
-      control.setAttribute("aria-label", (open ? "收起" : "展开") + names[control.dataset.collapse]);
-      control.title = control.getAttribute("aria-label");
-      if (control.dataset.collapse === "reply-pane") control.textContent = open ? "›" : "‹";
-    });
-  };
-});
+const panes = ["projects-pane", "files-pane", "content-pane", "reply-pane"];
+const paneNames = { "projects-pane": "项目栏", "files-pane": "文件栏", "content-pane": "内容栏", "reply-pane": "回复栏" };
+const paneSide = { "projects-pane": "left", "files-pane": "left", "content-pane": "left", "reply-pane": "right" };
+// One panel icon for every pane: the arrow points the way the pane will move,
+// so collapsing always points at that pane's edge and expanding points inward.
+function paneIcon(pane, expanded) {
+  const flip = (paneSide[pane] === "left") === !expanded;
+  return '<svg viewBox="0 0 16 16" aria-hidden="true"' + (flip ? ' style="transform:scaleX(-1)"' : "") + '>' +
+    '<rect x="1.6" y="2.6" width="12.8" height="10.8" rx="2.2"/>' +
+    '<path d="M9.6 2.6v10.8" opacity=".45"/>' +
+    '<path d="M6.4 6.2 4.4 8l2 1.8"/></svg>';
+}
+function layoutPanes() {
+  const widths = panes.map((id, i) => $(id).classList.contains("collapsed") ? "40px" : ["var(--projects-width,196px)", "var(--files-width,248px)", "minmax(280px,1fr)", "minmax(360px,470px)"][i]);
+  if ($("content-pane").classList.contains("collapsed") && !$("reply-pane").classList.contains("collapsed")) widths[3] = "minmax(360px,1fr)";
+  $("console").style.gridTemplateColumns = widths.join(" ");
+  document.querySelectorAll("[data-collapse]").forEach(control => {
+    const open = !$(control.dataset.collapse).classList.contains("collapsed");
+    const label = (open ? "收起" : "展开") + paneNames[control.dataset.collapse];
+    control.setAttribute("aria-controls", control.dataset.collapse);
+    control.setAttribute("aria-expanded", String(open));
+    control.setAttribute("aria-label", label);
+    control.title = label;
+    if (!control.querySelector("svg")) control.innerHTML = paneIcon(control.dataset.collapse, open);
+  });
+}
+function setPane(id, collapsed) {
+  $(id).classList.toggle("collapsed", collapsed);
+  layoutPanes();
+}
+document.querySelectorAll("[data-collapse]").forEach(b => { b.onclick = () => setPane(b.dataset.collapse, !$(b.dataset.collapse).classList.contains("collapsed")); });
+layoutPanes();
 document.addEventListener("keydown", run(async e => {
   if (e.defaultPrevented) return;
   if (window.mygo && (e.metaKey || e.ctrlKey) && ["Enter", "s"].includes(e.key)) return;
@@ -525,7 +544,7 @@ $("document").addEventListener("click", run(async e => {
   const match = decodeURIComponent(href.replace(/^file:\/\//, "")).match(/^(.*?)(?::(\d+)(?::\d+)?|#L(\d+))?$/);
   const path = match?.[1], line = Number(match?.[2] || match?.[3] || 1);
   await openFile(path, line);
-  if ($("content-pane").classList.contains("collapsed")) document.querySelector('[data-collapse="content-pane"]').click();
+  if ($("content-pane").classList.contains("collapsed")) { setPane("files-pane", false); setPane("content-pane", false); }
 }));
 async function reconnect() {
   if (stopped) return;

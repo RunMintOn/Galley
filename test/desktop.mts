@@ -57,11 +57,16 @@ try {
  const shots=resolve("test-results/desktop");await mkdir(shots,{recursive:true});
  for(const [name,w] of [["review",main],["scratch",scratch]]){const png=await call("capture",{window:w.id});await writeFile(join(shots,name+".png"),Buffer.from(png.png,"base64"));}
  const memory=execFileSync("ps",["-o","rss=","-p",String(child.pid)],{encoding:"utf8"}).trim();
+ const beforeZoom=await evaluate(main.id,"window.innerWidth");
+ await call("menu",{window:main.id,path:["View","放大"]});
+ await wait(async()=>(await evaluate(main.id,"window.innerWidth"))<beforeZoom);
+ await call("menu",{window:main.id,path:["View","实际大小"]});
+ await wait(async()=>(await evaluate(main.id,"window.innerWidth"))===beforeZoom);
  await evaluate(scratch.id,"window.confirm=()=>true");
  await call("menu",{window:main.id,path:["File","退出应用"]});
  await wait(()=>child.exitCode!==null);
  assert.equal((await fetch(service.origin+"/health")).status,200,"退出外壳不停止后台服务");
- const result={passed:true,directory,screenshots:shots,shellRSSKiB:Number(memory),nativeMenu:true,nativeKeyboard:true,singleInstance:true,backgroundServiceSurvives:true};
+ const result={passed:true,directory,screenshots:shots,shellRSSKiB:Number(memory),nativeMenu:true,nativeKeyboard:true,nativeZoom:true,singleInstance:true,backgroundServiceSurvives:true};
  await writeFile(join(shots,"result.json"),JSON.stringify(result,null,2));console.log(JSON.stringify(result));
 } finally {
  connection?.destroy();if(child.exitCode===null)child.kill("SIGKILL");
