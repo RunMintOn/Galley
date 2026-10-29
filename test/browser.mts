@@ -85,7 +85,9 @@ try {
   assert.deepEqual(unexpectedDialogs, []);
   page.off("dialog", dismissUnexpected);
   await page.click("#turn-tab");
-  assert.equal(await page.locator('[data-layout="split"]').isDisabled(), true);
+  assert.equal(await page.locator('[data-layout="split"]').isDisabled(), false);
+  await page.click('[data-layout="split"]');
+  assert.equal(await page.locator('[data-wrap]').isChecked(), true);
   await page.click('[data-collapse="reply-pane"]');
   await page.waitForFunction(() => !document.querySelector('[data-layout="split"]').disabled);
   await page.click('[data-layout="split"]');
@@ -137,8 +139,8 @@ try {
   assert.equal(await page.locator("#reply-pane").evaluate(el => Math.round(el.getBoundingClientRect().width)), 40);
   await page.click('[data-collapse="reply-pane"]');
   await page.locator("#document a", { hasText: "README.md" }).click();
-  assert.match(await page.locator("#content").textContent(), /旧标题/);
-  await page.getByRole("button", { name: "完整文件", exact: true }).click();
+  await page.locator(".cm-content").waitFor();
+  assert.match(await page.locator("#content").textContent(), /当前文件/);
   await page.locator(".cm-content[contenteditable=true]").waitFor();
   await page.locator(".cm-content").fill("# 手动修改\n");
   await page.waitForFunction(() => document.querySelector(".file-state")?.textContent === "未保存");
@@ -197,7 +199,8 @@ try {
   await page.locator(".cm-content[contenteditable=true]").waitFor();
   await page.click("#history-tab");
   await page.locator(".commit-row").first().click();
-  await page.locator(".git-files button", { hasText: "README.md" }).click();
+  const historicalRow = page.locator(".commit-file-row", { hasText: "README.md" });
+  if (await historicalRow.getAttribute("aria-expanded") !== "true") await historicalRow.click();
   await page.getByRole("button", { name: "完整文件", exact: true }).click();
   await page.locator(".historical-file .cm-content[contenteditable=false]").waitFor();
   assert.match(await page.locator(".historical-file .cm-content").textContent(), /当前文件/);

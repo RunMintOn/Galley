@@ -2,7 +2,8 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { randomUUID } from "node:crypto";
 import { resolve, join } from "node:path";
 import { homedir } from "node:os";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, writeFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 import { ChangeTracker, type ChangeOutcome } from "./changes.ts";
 import { ensureService, stateDirectory, type Service } from "./service.ts";
 import { startSessionInput } from "./session-input.mjs";
@@ -116,10 +117,13 @@ export default function reviewConsole(pi: ExtensionAPI) {
     async handler(_args, ctx) {
       try {
         const connected = await connect(ctx);
-        await post("focus", { sessionId: ctx.sessionManager.getSessionId() });
         const hash = new URLSearchParams({ token: connected.token, session: ctx.sessionManager.getSessionId(), root: ctx.cwd });
         const url = connected.origin + "/#" + hash;
-        const result = await pi.exec("open", [url], { timeout: 10000 });
+        const candidates = [process.env.REVIEW_CONSOLE_APP, join(homedir(), "Applications/Review Console.app"), "/Applications/Review Console.app", fileURLToPath(new URL("../dist-desktop/Review Console.app", import.meta.url))].filter((path): path is string => !!path);
+        let desktop = "";
+        for (const path of candidates) { try { await access(join(path, "Contents/MacOS/ReviewConsole")); desktop = path; break; } catch { /* Try the next installation location. */ } }
+        if (!desktop) await post("focus", { sessionId: ctx.sessionManager.getSessionId() });
+        const result = await pi.exec("open", desktop ? ["-n", "-a", desktop, "--args", url] : [url], { timeout: 10000 });
         if (result.code !== 0) ctx.ui.notify(url, "warning");
       } catch (e) { ctx.ui.notify(`无法打开审查台：${e instanceof Error ? e.message : String(e)}`, "error"); }
     },

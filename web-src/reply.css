@@ -5,8 +5,6 @@
      against it instead of blending into a tint of the same hue.
      `paper-*` are the three selectable stocks; `--paper` is the active one. */
   --paper-ivory: oklch(0.966 0.012 85);
-  --paper-white: oklch(0.978 0.003 85);
-  --paper-warm: oklch(0.955 0.011 82);
   --paper: var(--paper-ivory);
   --code-bg: color-mix(in oklab, var(--paper), var(--ink) 4%);
   --ink: oklch(0.248 0.018 210);
@@ -79,12 +77,7 @@
   --accent: oklch(0.780 0.105 258);
 }
 
-/* Each mode remembers its own stock. */
-:root[data-paper="white"] { --paper: var(--paper-white); }
-:root[data-paper="warm"] { --paper: var(--paper-warm); }
-:root.dark[data-paper="charcoal"] { --paper: oklch(0.245 0.006 240); }
-:root.dark[data-paper="slate"] { --paper: oklch(0.300 0.015 250); }
-:root.dark[data-paper="warm"] { --paper: oklch(0.340 0.009 80); }
+/* Paper selection is owned by the shared application theme adapter. */
 
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--paper); color: var(--ink); height: 100dvh; display: flex; flex-direction: column; }

@@ -3,3 +3,4 @@ dist/
 test-results/
 *.tgz
 .DS_Store
+dist-desktop/

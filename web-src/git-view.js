@@ -1,108 +1,127 @@
 import { mountDiff } from "./diff.js";
 import { createFileEditor } from "./editor.js";
 
-export async function showGitHistory(container, { root, api, onOpenCurrent, onError }) {
-  const pane = document.createElement("div"); pane.className = "git-view";
-  container.replaceChildren(pane);
-  let selectedHash = "", skip = 0, historicalEditor, diff, version = 0;
-  const query = values => new URLSearchParams({ root, ...values });
-  const call = (op, values = {}) => api("git/" + op + "?" + query(values));
-  const button = (text, action) => {
-    const node = document.createElement("button"); node.textContent = text;
-    node.onclick = () => Promise.resolve().then(action).catch(onError); return node;
+export async function showGitHistory(container, { index, root, api, onOpenCurrent, onError }) {
+  const pane = document.createElement("div"); pane.className = "git-view"; container.replaceChildren(pane);
+  index.replaceChildren();
+  let stopped = false, skip = 0, ref = "", selected = "", parent = 0, serial = 0, listSerial = 0;
+  let editor, diff;
+  const call = (op, values = {}) => api("git/" + op + "?" + new URLSearchParams({ root, ...values }));
+  const valid = request => !stopped && pane.isConnected && request === serial;
+  const clear = () => { diff?.destroy(); editor?.destroy(); diff = editor = undefined; };
+  const button = (label, action, className = "") => {
+    const b = document.createElement("button"); b.textContent = label; b.className = className;
+    b.onclick = () => Promise.resolve().then(action).catch(onError); return b;
   };
-  const header = document.createElement("div"); header.className = "file-toolbar";
-  const label = document.createElement("span"); label.textContent = "Git 历史 · 独立于右栏轮次";
-  const refs = document.createElement("select"); refs.setAttribute("aria-label", "历史分支引用");
-  refs.append(new Option("HEAD", ""));
-  header.append(label, refs);
-  const body = document.createElement("div"); body.className = "git-body";
-  pane.append(header, body);
-  const active = () => pane.isConnected;
-  async function list() {
-    const request = ++version;
-    diff?.destroy(); diff = undefined;
-    historicalEditor?.destroy(); historicalEditor = undefined;
-    const data = await call("log", { skip: String(skip), ...(selectedHash ? { hash: selectedHash } : {}) });
-    if (!active() || request !== version) return;
-    body.replaceChildren();
-    let lastDate = "";
-    for (const commit of data.commits) {
-      const day = new Date(commit.date).toLocaleDateString();
-      if (day !== lastDate) {
-        const heading = document.createElement("h3"); heading.className = "git-day"; heading.textContent = day;
-        body.append(heading); lastDate = day;
-      }
-      const b = button("", () => details(commit.hash));
-      const hash = document.createElement("span"); hash.className = "commit-hash"; hash.textContent = commit.hash.slice(0, 7);
-      const subject = document.createElement("span"); subject.className = "commit-subject"; subject.textContent = commit.subject;
-      const date = document.createElement("span"); date.className = "commit-date"; date.textContent = new Date(commit.date).toLocaleDateString();
-      b.title = `${commit.author} · ${new Date(commit.date).toLocaleString()}`;
-      b.append(hash, subject, date);
-      b.className = "commit-row"; body.append(b);
-    }
-    if (!data.commits.length) body.append(document.createTextNode("没有提交"));
-    const page = document.createElement("div"); page.className = "file-toolbar";
-    if (skip) page.append(button("上一页", () => { skip = Math.max(0, skip - 50); return list(); }));
-    if (data.commits.length === 50) page.append(button("下一页", () => { skip += 50; return list(); }));
-    body.append(page);
-  }
-  async function details(hash, parent = 0) {
-    const request = ++version;
-    diff?.destroy(); diff = undefined;
-    historicalEditor?.destroy(); historicalEditor = undefined;
-    const data = await call("commit", { hash, parent: String(parent) });
-    if (!active() || request !== version) return;
-    body.replaceChildren();
+  const stats = file => file.status === "Unavailable" || file.countable === false ? "行数不可用" : `+${file.added} −${file.deleted}`;
+  const totals = files => {
+    const available = files.filter(f => f.status !== "Unavailable" && f.countable !== false);
+    return `+${available.reduce((n, f) => n + f.added, 0)} −${available.reduce((n, f) => n + f.deleted, 0)}` + (available.length !== files.length ? " · 含不可计数文件" : "");
+  };
+  const controls = document.createElement("div"); controls.className = "git-index-toolbar";
+  const refs = document.createElement("select"); refs.setAttribute("aria-label", "历史分支引用"); refs.append(new Option("HEAD", ""));
+  const list = document.createElement("div"), workspace = document.createElement("div");
+  controls.append(refs); index.append(controls, workspace, list);
+  const fileView = async (path, hash) => {
+    const request = ++serial;
+    const file = await call("file", { path, hash }); if (!valid(request)) return;
+    clear(); pane.replaceChildren();
     const bar = document.createElement("div"); bar.className = "file-toolbar";
-    const source = document.createElement("span"); source.textContent = `${hash.slice(0, 8)} ← ${data.parent?.slice(0, 8) || "空树（根提交）"}`;
-    bar.append(button("返回提交列表", list), source);
+    bar.append(document.createTextNode(`${path} @ ${hash.slice(0, 7)} · 历史只读`),
+      button("返回提交", () => details(selected, parent)), button("打开当前文件", () => onOpenCurrent(path)),
+      button("Blame", async () => {
+        const data = await call("blame", { path, hash }); if (!valid(request)) return;
+        editor?.destroy(); editor = undefined;
+        const pre = document.createElement("pre"); pre.className = "blame"; pre.textContent = data.text; pane.replaceChildren(bar, pre);
+      }));
+    const host = document.createElement("div"); host.className = "editor-host"; pane.classList.add("historical-file"); pane.append(bar, host);
+    editor = createFileEditor(host, { ...file, partial: true }, () => {}, () => {});
+  };
+  async function details(hash, parentIndex = 0) {
+    selected = hash; parent = parentIndex;
+    const request = ++serial;
+    const data = await call("commit", { hash, parent: String(parent) }); if (!valid(request)) return;
+    clear(); pane.classList.remove("historical-file"); pane.replaceChildren();
+    list.querySelectorAll(".commit-row").forEach(b => b.setAttribute("aria-current", String(b.dataset.hash === hash)));
+    const card = document.createElement("section"); card.className = "commit-card";
+    const title = document.createElement("h2"); title.textContent = data.subject;
+    const meta = document.createElement("p"); meta.textContent = `${data.author} · ${new Date(data.date).toLocaleString()} · ${hash.slice(0, 7)}`;
+    const counts = document.createElement("p"); counts.className = "totals"; counts.textContent = totals(data.files) + (data.truncated ? " · 仅前 500 个文件，部分统计" : "");
+    const base = document.createElement("p"); base.textContent = `比较基准：${data.parent?.slice(0, 7) || "空树（根提交）"}`;
+    card.append(title, meta, counts, base);
     if (data.parents.length > 1) {
       const select = document.createElement("select"); select.setAttribute("aria-label", "比较父版本");
-      data.parents.forEach((p, i) => select.append(new Option(`父版本 ${i + 1}: ${p.slice(0, 8)}`, String(i))));
-      select.value = String(parent);
-      select.onchange = () => details(hash, Number(select.value)).catch(onError);
-      bar.append(select);
+      data.parents.forEach((p, i) => select.append(new Option(`父版本 ${i + 1}: ${p.slice(0, 7)}`, String(i))));
+      select.value = String(parent); select.onchange = () => details(hash, Number(select.value)).catch(onError); card.append(select);
     }
-    const files = document.createElement("div"); files.className = "git-files";
-    const view = document.createElement("div");
-    for (const file of data.files) files.append(button(`${file.path} +${file.added} −${file.deleted}`, () => {
-      diff?.destroy();
-      historicalEditor?.destroy(); historicalEditor = undefined;
-      const surface = document.createElement("div"); surface.className = "diff-surface"; view.replaceChildren(surface);
-      diff = mountDiff(surface, file, () => historical(file.path, file.status === "Deleted" ? data.parent : hash, view));
-    }));
-    body.append(bar, files, view);
-    if (data.truncated) { const warning = document.createElement("p"); warning.textContent = "提交包含过多文件，仅加载前 500 个"; body.append(warning); }
-    files.querySelector("button")?.click();
+    pane.append(card);
+    let openBody;
+    for (const [i, file] of data.files.entries()) {
+      const row = document.createElement("section"); row.className = "commit-file";
+      const body = document.createElement("div"); body.hidden = true;
+      const toggle = button(`${file.path}  ${stats(file)}`, () => {
+        const opening = body.hidden; clear(); if (openBody) openBody.hidden = true;
+        body.hidden = !opening; toggle.setAttribute("aria-expanded", String(opening));
+        if (!opening) return;
+        const surface = document.createElement("div"); surface.className = "diff-surface"; body.replaceChildren(surface); openBody = body;
+        diff = mountDiff(surface, file, () => fileView(file.path, file.status === "Deleted" ? data.parent : hash).catch(onError));
+      }, "commit-file-row");
+      toggle.setAttribute("aria-expanded", "false"); row.append(toggle, body); pane.append(row); if (!i) toggle.click();
+    }
   }
-  async function historical(path, hash, view) {
-    const request = ++version;
-    const file = await call("file", { hash, path });
-    if (!active() || request !== version) return;
-    diff?.destroy(); diff = undefined;
-    historicalEditor?.destroy();
-    const holder = document.createElement("div"); holder.className = "historical-file";
-    const bar = document.createElement("div"); bar.className = "file-toolbar";
-    const label = document.createElement("span"); label.textContent = `${path} @ ${hash.slice(0, 8)} · 历史只读`;
-    bar.append(label, button("打开当前文件", () => onOpenCurrent(path)), button("Blame", async () => {
-      const result = await call("blame", { hash, path });
-      if (!active()) return;
-      const pre = document.createElement("pre"); pre.className = "blame"; pre.textContent = result.text;
-      view.replaceChildren(bar, pre); historicalEditor?.destroy(); historicalEditor = undefined;
-    }));
-    const host = document.createElement("div"); host.className = "editor-host";
-    holder.append(bar, host); view.replaceChildren(holder);
-    historicalEditor = createFileEditor(host, { ...file, partial: true }, () => {}, () => {});
+  const chooseWorkspace = async (group, file) => {
+    const request = ++serial;
+    const data = await call("workspace-file", { group, path: file.path }); if (!valid(request)) return;
+    clear(); selected = ""; pane.classList.remove("historical-file"); pane.replaceChildren();
+    const label = document.createElement("div"); label.className = "file-toolbar";
+    label.textContent = { staged: "已暂存 · HEAD → index", unstaged: "未暂存 · index → working tree", untracked: "未跟踪 · 新增" }[group];
+    const surface = document.createElement("div"); surface.className = "diff-surface"; pane.append(label, surface);
+    diff = mountDiff(surface, data, () => onOpenCurrent(file.path));
+  };
+  async function refreshWorkspace() {
+    const request = ++listSerial;
+    const data = await call("workspace"); if (stopped || !pane.isConnected || request !== listSerial) return;
+    workspace.replaceChildren();
+    const header = document.createElement("h3"); header.textContent = `未提交 · ${data.count} 文件`;
+    const total = document.createElement("p"); total.className = "workspace-total";
+    total.textContent = `分组差异合计 +${data.added} −${data.deleted}${data.unavailable ? " · 含不可计数文件" : ""}${data.truncated ? " · 部分结果" : ""}`;
+    workspace.append(header, total);
+    for (const group of data.groups) {
+      const section = document.createElement("details"); section.open = !!group.files.length;
+      const summary = document.createElement("summary"); summary.textContent = `${{staged:"已暂存",unstaged:"未暂存",untracked:"未跟踪"}[group.id]} · ${group.files.length}  +${group.added} −${group.deleted}${group.unavailable ? " · 含不可计数" : ""}`;
+      section.append(summary);
+      for (const file of group.files) section.append(button(`${file.path}  ${stats(file)}`, () => chooseWorkspace(group.id, file), "workspace-file"));
+      workspace.append(section);
+    }
+    if (!data.count) workspace.append(document.createTextNode("工作区干净"));
   }
-  refs.onchange = () => { selectedHash = refs.value; skip = 0; list().catch(onError); };
+  async function loadList() {
+    const data = await call("log", { skip: String(skip), ...(ref ? { hash: ref } : {}) }); if (stopped || !pane.isConnected) return;
+    list.replaceChildren(); let previous = "";
+    const today = new Date().toLocaleDateString(), yesterday = new Date(Date.now() - 86400000).toLocaleDateString();
+    for (const commit of data.commits) {
+      const day = new Date(commit.date).toLocaleDateString();
+      const group = day === today ? "今天" : day === yesterday ? "昨天" : "更早";
+      if (group !== previous) { const h = document.createElement("h3"); h.className = "git-day"; h.textContent = group; list.append(h); previous = group; }
+      const row = button("", () => details(commit.hash), "commit-row"); row.dataset.hash = commit.hash;
+      row.title = `${commit.author} · ${new Date(commit.date).toLocaleString()}`;
+      for (const [className, text] of [["commit-subject", commit.subject], ["commit-hash", commit.hash.slice(0, 7)], ["commit-date", new Date(commit.date).toLocaleTimeString()], ["commit-stats", `+${commit.added} −${commit.deleted}${commit.unavailable ? " *" : ""}`]]) {
+        const span = document.createElement("span"); span.className = className; span.textContent = text; row.append(span);
+      }
+      if (commit.unavailable) row.title += " · 含不可计数文件";
+      list.append(row);
+    }
+    if (!data.commits.length) list.append(document.createTextNode("没有提交"));
+    if (skip) list.append(button("上一页", () => { skip = Math.max(0, skip - 50); return loadList(); }));
+    if (data.commits.length === 50) list.append(button("下一页", () => { skip += 50; return loadList(); }));
+    if (!selected && data.commits.length) await details(data.commits[0].hash);
+  }
+  refs.onchange = () => { ref = refs.value; skip = 0; selected = ""; loadList().catch(onError); };
   try {
-    const data = await call("refs");
-    if (!active()) return;
-    data.refs.forEach(ref => refs.append(new Option(ref.name, ref.hash)));
-    await list();
-  } catch (e) {
-    if (active()) { body.textContent = "Git 历史不可用：" + e.message; }
-  }
-  return () => { historicalEditor?.destroy(); diff?.destroy(); };
+    const data = await call("refs"); if (!stopped) data.refs.forEach(r => refs.append(new Option(r.name, r.hash)));
+    await refreshWorkspace(); await loadList();
+  } catch (e) { if (!stopped && pane.isConnected) { pane.textContent = "Git 不可用：" + e.message; index.append(document.createTextNode("Git 不可用")); } }
+  const dispose = () => { stopped = true; serial++; listSerial++; clear(); };
+  dispose.refresh = refreshWorkspace;
+  return dispose;
 }

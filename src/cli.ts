@@ -12,5 +12,5 @@ if (process.argv[2] === "stop") {
   console.log("审查台服务已停止");
 } else {
   const service = await ensureService();
-  console.log(`${service.origin}/#token=${service.token}`);
+  console.log(process.argv[2] === "--json" ? JSON.stringify(service) : `${service.origin}/#token=${service.token}`);
 }

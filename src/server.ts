@@ -204,6 +204,9 @@ export async function startConsole(options: { directory: string; port?: number; 
         "/app.js": ["app.js", "text/javascript"],
         "/bootstrap.js": ["bootstrap.js", "text/javascript"],
         "/style.css": ["style.css", "text/css"],
+        "/scratch": ["scratch.html", "text/html; charset=utf-8"],
+        "/scratch.js": ["scratch.js", "text/javascript"],
+        "/scratch.css": ["scratch.css", "text/css"],
       };
       const asset = assets[url.pathname];
       if (!asset) throw new ConsoleError("Not found", 404);

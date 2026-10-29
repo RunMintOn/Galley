@@ -23,13 +23,14 @@ for (const [entry, out] of [["src/server.ts","server"],["src/extension.ts","exte
     metafile:true,
   }));
 }
-collect(await build({entryPoints:["web-src/app.js"],outfile:"dist/web/app.js",bundle:true,format:"esm",target:"es2022",minify:true,legalComments:"linked",metafile:true}));
+for (const name of ["app", "scratch"]) collect(await build({entryPoints:[`web-src/${name}.js`],outfile:`dist/web/${name}.js`,bundle:true,format:"esm",target:"es2022",minify:true,legalComments:"linked",metafile:true}));
 const math = await build({entryPoints:["node_modules/katex/dist/katex.min.css"],bundle:true,minify:true,write:false,loader:{".woff2":"dataurl",".woff":"dataurl",".ttf":"dataurl"}});
 function scope(css, name) {
   const root=postcss.parse(css);
   root.walkRules(rule=>{
     if(rule.parent.type==="atrule" && /keyframes/.test(rule.parent.name))return;
     rule.selectors=rule.selectors.map(s=>{
+      if(s.includes(":root.dark"))return s.replaceAll(":root.dark","html.dark "+name+":not([data-paper=ivory])");
       if(s.includes(":root"))return s.replaceAll(":root",name);
       if(/^body\b/.test(s))return s.replace(/^body\b/,name);
       return name+" "+s;
@@ -49,6 +50,8 @@ const styles = math.outputFiles[0].text + "\n" +
 await writeFile("dist/web/style.css",styles);
 await writeFile("dist/web/index.html",await readFile("web-src/index.html"));
 await writeFile("dist/web/bootstrap.js",await readFile("web-src/bootstrap.js"));
+await writeFile("dist/web/scratch.html",await readFile("web-src/scratch.html"));
+await writeFile("dist/web/scratch.css",await readFile("web-src/scratch.css"));
 const notices = ["pi-compact-tool\n"+await readFile("third-party/compact-tool-LICENSE.txt","utf8")];
 for (const directory of [...bundledPackages].sort()) {
   const files = await readdir(directory);

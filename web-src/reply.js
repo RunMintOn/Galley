@@ -10,14 +10,14 @@ import { katex } from "@mdit/plugin-katex";
 import { mountPlot } from "./plot.js";
 import { adjustDiagramContrast } from "./diagram-contrast.js";
 
-export function createReplyRenderer(preview) {
+export function createReplyRenderer(preview, { enhanced = true } = {}) {
 const markdown = new MarkdownIt({ html: false, breaks: true })
   .use(taskLists)
   .use(footnote)
   .use(sub)
   .use(sup)
-  .use(mark)
-  .use(katex, {
+  .use(mark);
+if (enhanced) markdown.use(katex, {
     delimiters: "all",
     mathFence: true,
     throwOnError: false,
@@ -69,11 +69,11 @@ const defaultFence = markdown.renderer.rules.fence;
 markdown.renderer.rules.fence = (tokens, index, options, env, renderer) => {
   const token = tokens[index];
   const language = token.info.trim().split(/\s+/)[0].toLowerCase();
-  if (language === "plot") {
+  if (enhanced && language === "plot") {
     const plotIndex = env.plots.push(token.content) - 1;
     return `<div class="function-plot-block" data-plot="${plotIndex}"></div>\n`;
   }
-  if (language !== "mermaid") {
+  if (!enhanced || language !== "mermaid") {
     const rendered = defaultFence(tokens, index, options, env, renderer);
     return wrapCodeBlock(rendered, language, token.content);
   }
@@ -133,7 +133,7 @@ function render(text) {
   if (!text) return;
 
   const env = { diagrams: [], plots: [] };
-  if (detectType(text)) {
+  if (enhanced && detectType(text)) {
     env.diagrams.push(text);
     preview.innerHTML = '<div class="mermaid-diagram" data-diagram="0"></div>';
   } else {

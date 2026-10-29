@@ -28,12 +28,15 @@ test("history diffs use commit parents and historical files never use the workin
     const query = "root=" + encodeURIComponent(root);
     const log = await api("git/log?" + query);
     assert.equal(log.status, 200);
+    assert.deepEqual(log.body.commits.map((c: { added: number; deleted: number }) => [c.added, c.deleted]), [[1, 1], [1, 0]]);
     assert.deepEqual(log.body.commits.map((c: { subject: string }) => c.subject), ["second", "first"]);
     const rootCommit = await api("git/commit?" + query + "&hash=" + first);
     assert.equal(rootCommit.body.parent, null);
     assert.equal(rootCommit.body.files[0].status, "Added");
     const commit = await api("git/commit?" + query + "&hash=" + second);
     assert.equal(commit.body.parent, first);
+    assert.equal(commit.body.author, "Test");
+    assert.ok(commit.body.date);
     assert.equal(commit.body.files[0].diff.deletedLines, 1);
     const old = await api("git/file?" + query + "&hash=" + first + "&path=note.md");
     assert.equal(old.body.content, "first\n");
@@ -51,6 +54,8 @@ test("history diffs use commit parents and historical files never use the workin
     const merged = git("rev-parse", "HEAD");
     const merge = await api("git/commit?" + query + "&hash=" + merged);
     assert.deepEqual(merge.body.parents, [second, side]);
+    const mergedLog = await api("git/log?" + query);
+    assert.deepEqual([mergedLog.body.commits[0].added, mergedLog.body.commits[0].deleted], [1, 0]);
     assert.equal(merge.body.parent, second);
     assert.equal((await api("git/commit?" + query + "&hash=" + merged + "&parent=1")).body.parent, side);
   } finally { await service.close(); }

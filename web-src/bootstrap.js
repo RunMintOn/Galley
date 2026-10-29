@@ -11,7 +11,9 @@ window.addEventListener("pageshow", (event) => {
   if (event.persisted) location.reload();
 });
 
-if (standby) {
+if (window.mygo) {
+  import("./app.js").then(() => document.body.classList.remove("booting")).catch(error => { message.textContent = error.message; retry.hidden = false; });
+} else if (standby) {
   message.textContent = "Preview moved to another tab. You can close this tab.";
   retry.textContent = "Open preview";
   retry.hidden = false;

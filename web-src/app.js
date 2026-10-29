@@ -2,6 +2,7 @@ import { mountDiff } from "./diff.js";
 import { createReplyRenderer } from "./reply.js";
 import { createFileEditor } from "./editor.js";
 import { showGitHistory } from "./git-view.js";
+import { setupTheme } from "./theme.js";
 
 const $ = id => document.getElementById(id);
 const params = new URLSearchParams(location.hash.slice(1));
@@ -21,6 +22,9 @@ let disposeHistory;
 let socket;
 let reconnectTimer, stopped = false, inputSession = "", sending = false, temporaryPreview = false;
 const drafts = new Map();
+const projectSessions = new Map();
+const branches = new Map();
+let changedTree = false;
 let foreground = document.visibilityState === "visible" && document.hasFocus();
 const expanded = new Set([""]);
 const canvas = $("document").parentElement;
@@ -38,7 +42,12 @@ function leaveFile() {
   diff?.destroy(); diff = undefined;
   editor?.destroy(); editor = undefined; currentFile = undefined; return true;
 }
-function closeHistory() { disposeHistory?.(); disposeHistory = undefined; }
+function indexMode(git = false) {
+  $("review-index").hidden = git;
+  $("git-index").hidden = !git;
+  $("files-pane").classList.toggle("git-mode", git);
+}
+function closeHistory() { disposeHistory?.(); disposeHistory = undefined; indexMode(); }
 function setSource(open) {
   sourceOpen = open;
   if (open && $("content-pane").classList.contains("collapsed")) document.querySelector('[data-collapse="content-pane"]').click();
@@ -88,7 +97,7 @@ function selectFile(path) {
 function contentHeader(name = "", stats) {
   $("content-name").textContent = name.split("/").at(-1);
   $("content-name").title = name;
-  $("content-counts").replaceChildren(...(stats ? counts(stats.added, stats.deleted) : []));
+  $("content-counts").replaceChildren(...(stats?.status === "Unavailable" ? [document.createTextNode("行数不可用")] : stats ? counts(stats.added, stats.deleted) : []));
   $("content-actions").replaceChildren(); $("content-meta").replaceChildren();
   $("content-footer-actions").replaceChildren(); $("content-position").textContent = "";
   $("turn-tab").setAttribute("aria-pressed", String(state.mode === "turn"));
@@ -100,16 +109,22 @@ function renderProjects() {
   $("remove-project").disabled = !state.root;
   $("projects").replaceChildren(...state.projects.map(p => {
     const related = state.sessions.filter(s => s.root === p.root);
-    const selected = related.find(s => s.id === state.session) || related.at(-1);
+    const selected = related.find(s => s.id === (p.root === state.root ? state.session : projectSessions.get(p.root))) || related.at(-1);
     const b = button("", () => chooseProject(p.root), "project");
     b.setAttribute("aria-current", String(p.root === state.root)); b.title = p.root;
     const dot = document.createElement("span");
     dot.className = "dot" + (related.some(s => s.state === "working") ? " working" : related.some(s => s.state === "idle") ? " online" : "");
     dot.title = related.some(s => s.state === "working") ? "工作中" : related.some(s => s.state === "idle") ? "空闲" : "离线";
     const label = document.createElement("span"); label.className = "project-name"; label.textContent = p.name;
-    const path = document.createElement("small"); path.textContent = p.root.replace(/^\/Users\/[^/]+/, "~"); label.append(path);
+    const path = document.createElement("small"); path.textContent = branches.get(p.root) || "加载分支…"; label.append(path);
+    if (!branches.has(p.root)) {
+      branches.set(p.root, "加载分支…");
+      api("git/head?" + new URLSearchParams({ root: p.root })).then(data => {
+        branches.set(p.root, data.label || "无提交"); renderProjects();
+      }).catch(() => { branches.set(p.root, "非仓库 / Git 不可用"); renderProjects(); });
+    }
     const count = document.createElement("span"); count.className = "project-count";
-    count.textContent = (selected?.rounds.find(r => selected.id === state.session && r.id === state.round) || selected?.rounds.at(-1))?.count ?? "—";
+    count.textContent = selected?.rounds.at(-1)?.count ?? "—";
     b.append(dot, label, count); return b;
   }));
 }
@@ -121,11 +136,12 @@ async function refresh() {
   if (!state.projects.some(p => p.root === state.root)) state.root = state.sessions.find(s => s.id === state.session)?.root || state.projects[0]?.root || "";
   if (!state.sessions.some(s => s.id === state.session && s.root === state.root)) state.session = state.sessions.filter(s => s.root === state.root).at(-1)?.id || "";
   const selected = session();
+  if (selected) projectSessions.set(state.root, selected.id);
   const latest = selected?.rounds.at(-1)?.id || "";
   const wasFollowing = !editor && !temporaryPreview && !sourceOpen && (!state.round || state.round === previousLatest);
   if (wasFollowing) state.round = latest;
   renderProjects();
-  $("sessions").replaceChildren(...state.sessions.filter(s => s.root === state.root).map(s => option(s.id, s.title)));
+  $("sessions").replaceChildren(...state.sessions.filter(s => s.root === state.root).map(s => option(s.id, s.title + " · " + s.id.slice(0, 7))));
   $("sessions").value = state.session;
   $("sessions").disabled = !state.session;
   $("session-state").textContent = { offline: "离线", idle: "空闲", working: "工作中" }[selected?.state] || "无会话";
@@ -153,7 +169,7 @@ async function chooseProject(root) {
   if (!leaveFile()) return;
   setSource(false);
   closeHistory();
-  state.root = root; state.session = ""; state.round = ""; state.data = null; state.mode = "turn";
+  state.root = root; state.session = projectSessions.get(root) || ""; state.round = ""; state.data = null; state.mode = "turn";
   expanded.clear(); expanded.add("");
   await refresh(); await loadTree(); updateWatch();
 }
@@ -225,12 +241,39 @@ async function loadRound() {
   $("file-count").textContent = report?.files.length || 0;
   $("rail-count").textContent = report?.files.length || "";
   $("change-totals").append(...counts(report?.added, report?.deleted));
-  $("changed").replaceChildren(...(report?.files || []).map(f => fileButton(f.path, () => showDiff(f), f)));
+  $("round-time").textContent = report ? new Date(report.start).toLocaleTimeString() + " – " + new Date(report.end).toLocaleTimeString() : "";
+  renderChanged();
   if (state.mode === "turn") {
     if (report?.files.length) showDiff(report.files[0], true);
     else $("content").textContent = data.notice || (report?.incomplete ? "报告不完整" : report ? "已追踪文件无净改动" : "本轮未捕获");
   }
 }
+function renderChanged() {
+  const list = $("changed"); list.replaceChildren();
+  const directories = new Map([["", list]]);
+  for (const file of state.data?.report?.files || []) {
+    let parent = list;
+    if (changedTree) {
+      let prefix = "";
+      for (const part of file.path.split("/").slice(0, -1)) {
+        prefix += part + "/";
+        if (!directories.has(prefix)) {
+          const folder = document.createElement("details"); folder.className = "tree-dir"; folder.open = true;
+          const title = document.createElement("summary"); title.textContent = part + "/";
+          const children = document.createElement("div"); folder.append(title, children); parent.append(folder); directories.set(prefix, children);
+        }
+        parent = directories.get(prefix);
+      }
+    }
+    parent.append(fileButton(file.path, () => showDiff(file), file));
+  }
+  selectFile(state.file);
+}
+$("changed-layout").onclick = () => { changedTree = !changedTree; $("changed-layout").textContent = changedTree ? "Flat" : "Tree"; $("changed-layout").setAttribute("aria-pressed", String(changedTree)); renderChanged(); };
+$("open-scratch").onclick = () => {
+  if (window.mygo) window.mygo.call("Desktop.OpenScratch");
+  else window.open("/scratch", "review-scratch");
+};
 function showDiff(file, preserveSource = false) {
   if (!leaveFile()) return;
   if (!preserveSource) setSource(false);
@@ -250,7 +293,9 @@ function showDiff(file, preserveSource = false) {
     const summary = document.createElement("summary"); summary.textContent = "ⓘ"; summary.setAttribute("aria-label", "本轮请求与捕获范围"); summary.title = "本轮请求与捕获范围";
     const body = document.createElement("div");
     const prompts = document.createElement("pre"); prompts.textContent = report.prompts.join("\n\n") || "用户消息未捕获";
-    context.append(summary, body); body.append(prompts); context.className = "round-context"; $("content-meta").append(context);
+    context.append(summary, body); body.append(prompts); context.className = "round-context"; context.open = true;
+    summary.textContent = "本轮请求 · " + new Date(report.start).toLocaleString() + " – " + new Date(report.end).toLocaleTimeString();
+    $("content").prepend(context);
     const coverage = document.createElement("p"); coverage.className = "coverage";
     coverage.textContent = "已捕获 Edit / Write / apply_patch 的净改动；命令和外部写入不在报告范围内。";
     body.append(coverage);
@@ -365,7 +410,7 @@ async function chooseRound(id) {
   if (!leaveFile()) { $("rounds").value = state.round; return; }
   closeHistory(); state.mode = "turn"; state.round = id; await loadRound(); await refresh();
 }
-$("sessions").onchange = run(async e => { if (!leaveFile()) { e.target.value = state.session; return; } state.session = e.target.value; state.round = ""; state.mode = "turn"; await refresh(); });
+$("sessions").onchange = run(async e => { if (!leaveFile()) { e.target.value = state.session; return; } setSource(false); closeHistory(); state.session = e.target.value; state.round = ""; state.mode = "turn"; await refresh(); });
 $("rounds").onchange = run(e => chooseRound(e.target.value));
 $("previous").onclick = run(() => { const rounds = session()?.rounds || []; return chooseRound(rounds[Math.max(0, rounds.findIndex(r => r.id === state.round) - 1)]?.id || ""); });
 $("next").onclick = run(() => { const rounds = session()?.rounds || []; return chooseRound(rounds[Math.min(rounds.length - 1, rounds.findIndex(r => r.id === state.round) + 1)]?.id || ""); });
@@ -376,7 +421,10 @@ $("history-tab").onclick = run(async () => {
   setSource(false);
   closeHistory(); generation++; state.mode = "history";
   contentHeader("Git 历史"); selectFile("");
-  disposeHistory = await showGitHistory($("content"), { root: state.root, api, onOpenCurrent: path => openFile(path), onError: e => notice(e.message) });
+  indexMode(true);
+  const root = state.root;
+  const dispose = await showGitHistory($("content"), { index: $("git-index"), root, api, onOpenCurrent: path => openFile(path), onError: e => notice(e.message) });
+  if (state.root !== root || state.mode !== "history") dispose(); else disposeHistory = dispose;
 });
 function toggleSource() {
   setSource(!sourceOpen);
@@ -388,30 +436,7 @@ $("reply-source").oninput = () => {
   temporaryPreview = true; $("latest").hidden = false; $("reading-state").textContent = "Temporary preview";
   clearTimeout(renderTimer); renderTimer = setTimeout(() => renderer.render($("reply-source").value), 200);
 };
-function themeControls() {
-  const dark = document.documentElement.classList.contains("dark");
-  $("theme").innerHTML = dark
-    ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"/></svg>'
-    : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M20.5 14A9 9 0 0 1 10 3.5 9 9 0 1 0 20.5 14Z"/></svg>';
-  const papers = dark ? [["charcoal","Charcoal"],["slate","Slate"],["warm","Warm grey"]] : [["ivory","Ivory"],["white","White"],["warm","Warm grey"]];
-  $("paper").replaceChildren(...papers.map(([value, label]) => option(value, label)));
-  const saved = localStorage.getItem(dark ? "review-dark-paper" : "review-light-paper");
-  $("paper").value = papers.some(([value]) => value === saved) ? saved : papers[0][0];
-  $("reply-pane").dataset.paper = $("paper").value;
-}
-$("theme").onclick = () => {
-  const dark = document.documentElement.classList.toggle("dark");
-  $("reply-pane").classList.toggle("dark", dark);
-  localStorage.setItem("review-theme", dark ? "dark" : "light");
-  themeControls();
-  renderer.render($("reply-source").value);
-};
-if (localStorage.getItem("review-theme") === "light") { document.documentElement.classList.remove("dark"); $("reply-pane").classList.remove("dark"); }
-themeControls();
-$("paper").onchange = () => {
-  $("reply-pane").dataset.paper = $("paper").value;
-  localStorage.setItem(document.documentElement.classList.contains("dark") ? "review-dark-paper" : "review-light-paper", $("paper").value);
-};
+setupTheme($("reply-pane"), () => renderer.render($("reply-source").value));
 document.querySelectorAll("[data-collapse]").forEach(b => {
   b.setAttribute("aria-controls", b.dataset.collapse);
   b.setAttribute("aria-expanded", "true");
@@ -419,7 +444,8 @@ document.querySelectorAll("[data-collapse]").forEach(b => {
     const pane = $(b.dataset.collapse); const collapsed = pane.classList.toggle("collapsed");
     if (pane.id === "content-pane") $("files-pane").classList.toggle("collapsed", collapsed);
     if (pane.id === "files-pane" && !collapsed) $("content-pane").classList.remove("collapsed");
-    const widths = ["projects-pane","files-pane","content-pane","reply-pane"].map((id,i) => $(id).classList.contains("collapsed") ? (i === 2 ? "0px" : "40px") : ["var(--projects-width,176px)","var(--files-width,236px)","minmax(260px,500fr)","minmax(300px,528fr)"][i]);
+    const widths = ["projects-pane","files-pane","content-pane","reply-pane"].map((id,i) => $(id).classList.contains("collapsed") ? (i === 2 ? "0px" : "40px") : ["var(--projects-width,196px)","var(--files-width,248px)","minmax(280px,1fr)","minmax(360px,470px)"][i]);
+    if ($("content-pane").classList.contains("collapsed") && !$("reply-pane").classList.contains("collapsed")) widths[3] = "minmax(360px,1fr)";
     $("console").style.gridTemplateColumns = widths.join(" ");
     const names = { "projects-pane": "项目栏", "files-pane": "文件树", "content-pane": "内容", "reply-pane": "回复" };
     document.querySelectorAll("[data-collapse]").forEach(control => {
@@ -433,6 +459,7 @@ document.querySelectorAll("[data-collapse]").forEach(b => {
 });
 document.addEventListener("keydown", run(async e => {
   if (e.defaultPrevented) return;
+  if (window.mygo && (e.metaKey || e.ctrlKey) && ["Enter", "s"].includes(e.key)) return;
   if (e.key === "Escape" && $("project-menu").open) { e.preventDefault(); $("project-menu").open = false; return; }
   if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && e.target.id !== "message-input") { e.preventDefault(); toggleSource(); return; }
   const typing = e.target.closest("input,textarea,select,[contenteditable=true]");
@@ -487,7 +514,7 @@ $("message-input").onkeydown = run(async e => {
 });
 window.addEventListener("beforeunload", e => { if (hasUnsavedChanges()) { e.preventDefault(); e.returnValue = ""; } });
 window.addEventListener("blur", () => { foreground = false; updateWatch(); });
-window.addEventListener("focus", run(async () => { foreground = document.visibilityState === "visible"; updateWatch(); await recheckFile(); }));
+window.addEventListener("focus", run(async () => { foreground = document.visibilityState === "visible"; branches.delete(state.root); renderProjects(); updateWatch(); await recheckFile(); await disposeHistory?.refresh?.(); }));
 document.addEventListener("visibilitychange", run(async () => { foreground = document.visibilityState === "visible" && document.hasFocus(); updateWatch(); await recheckFile(); }));
 $("document").addEventListener("click", run(async e => {
   const anchor = e.target.closest("a");
@@ -497,12 +524,8 @@ $("document").addEventListener("click", run(async e => {
   e.preventDefault();
   const match = decodeURIComponent(href.replace(/^file:\/\//, "")).match(/^(.*?)(?::(\d+)(?::\d+)?|#L(\d+))?$/);
   const path = match?.[1], line = Number(match?.[2] || match?.[3] || 1);
-  const file = state.data?.report?.files.find(f => f.path === path);
-  if (file) {
-    showDiff(file); diff?.goToLine(line);
-    if ($("content-pane").classList.contains("collapsed")) document.querySelector('[data-collapse="content-pane"]').click();
-  }
-  else await openFile(path, line);
+  await openFile(path, line);
+  if ($("content-pane").classList.contains("collapsed")) document.querySelector('[data-collapse="content-pane"]').click();
 }));
 async function reconnect() {
   if (stopped) return;
@@ -519,7 +542,7 @@ function connectEvents() {
       await focusSession("#" + new URLSearchParams({ root: event.data.root, session: event.data.sessionId }));
       return;
     }
-    if (event.type === "files") { await recheckFile(); await loadTree(); return; }
+    if (event.type === "files") { branches.delete(state.root); renderProjects(); await recheckFile(); await loadTree(); await disposeHistory?.refresh?.(); return; }
     if (event.type === "watch-error") { notice(event.data); return; }
     await refresh();
   });
@@ -533,6 +556,24 @@ window.addEventListener("pagehide", () => { stopped = true; clearTimeout(reconne
 window.addEventListener("review-console-replaced", () => {
   stopped = true; clearTimeout(reconnectTimer); socket?.close(); progressObserver.disconnect(); renderer.destroy(); editor?.destroy(); closeHistory();
 });
+window.reviewDesktop = {
+  dirty: hasUnsavedChanges,
+  canClose() {
+    if (savingFile) { notice("正在保存，请等待确认后再关闭"); return false; }
+    return !hasUnsavedChanges() || confirm("存在未保存的文件修改，关闭后将丢弃，是否继续？");
+  },
+  focus: focusSession,
+  command(name) {
+    if (name === "scratch") $("open-scratch").click();
+    if (name === "save") {
+      if (sourceOpen) notice("回复原文仅临时预览，不写入文件或会话");
+      else if (!document.activeElement.closest("input,textarea,select,[contenteditable=true]") || document.activeElement.closest(".editor-host")) run(saveFile)();
+    }
+    if (name === "source" && document.activeElement.id !== "message-input") toggleSource();
+    if (name === "next") $("next").click();
+    if (name === "previous") $("previous").click();
+  },
+};
 run(async () => {
   await api("auth", {});
   await refresh(); await loadTree(); connectEvents();
