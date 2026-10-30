@@ -40,6 +40,7 @@ for (const subject of ["feat(search): 支持正则", "refactor(diff): 拆出 mea
   git("-c", "user.name=Review fixture", "-c", "user.email=fixture@example.test", "commit", "-m", subject);
 }
 await writeFile(join(root, "src", "diffview.go"), after);
+await writeFile(join(root, "notes.unknown"), "alpha\nbeta\n");
 const reply = [
   "# 折叠的 hunk 现在会被画出来", "",
   "之前 collapsed 的分支直接跳过，被折叠掉的那段改动完全不显示，你只能看到「还有 N 行没展开」却没法展开。现在",
@@ -68,8 +69,9 @@ try {
     { path: "src/diffview.go", status: "Modified", added: 7, deleted: 2, diff: diffFile("src/diffview.go", before, after) },
     { path: "src/search.go", status: "Modified", added: 1, deleted: 1, diff: diffFile("src/search.go", "func oldSearch() {}\n", "func search() {}\n") },
     { path: "README.md", status: "Modified", added: 2, deleted: 0, diff: diffFile("README.md", "# Mayoi\n", "# Mayoi\n\n说明。\n") },
+    { path: "notes.unknown", status: "Modified", added: 1, deleted: 0, diff: diffFile("notes.unknown", "alpha\n", "alpha\nbeta\n") },
   ];
-  for (let i = 0; i < 3; i++) await api("round", { id: "round-" + i, sessionId: "visual", entryId: i ? "reply" : "earlier", end: 1730000000000 + i, outcome: "completed", report: { id: "round-" + i, cwd: root, start: 1730000000000, end: 1730000000000 + i, outcome: "completed", prompts: ["修复折叠的 hunk，保留滚动位置。"], files, added: 10, deleted: 3 } });
+  for (let i = 0; i < 3; i++) await api("round", { id: "round-" + i, sessionId: "visual", entryId: i ? "reply" : "earlier", end: 1730000000000 + i, outcome: "completed", report: { id: "round-" + i, cwd: root, start: 1730000000000, end: 1730000000000 + i, outcome: "completed", prompts: ["修复折叠的 hunk，保留滚动位置。"], files, added: 11, deleted: 3 } });
   for (const name of ["harness", "ego-site", "dotfiles", "review-console", "notes", "mygo-fork", "ssh-pi-host", "mayoi", "zellij-cfg", "obsidian-vault", "gh-scratch", "project-13", "project-14", "project-15"]) {
     const project = join(directory, "projects", name); await mkdir(project);
     await api("projects", { root: project });
@@ -92,10 +94,26 @@ try {
   const shoot = async name => { await page.mouse.move(1, 899); await page.screenshot({ path: shots + "/" + name + ".png" }); };
   const widths = await page.locator(".pane").evaluateAll(nodes => nodes.map(node => Math.round(node.getBoundingClientRect().width)));
   assert.ok(widths[3] >= 360 && widths.every(width => width > 0), "完整四栏可用且回复栏至少 360px");
+  const flush = async (pane, row) => {
+    const header = await page.locator(pane + " > header").boundingBox();
+    const first = await page.locator(row).first().boundingBox();
+    return header && first && Math.abs(header.y + header.height - first.y) <= 1;
+  };
+  assert.ok(await flush(".projects-pane", "#projects .project[aria-current=true]"), "选中项目行必须贴住栏头");
+  assert.ok(await flush(".files-pane", "#changed .file-button[aria-current=true]"), "选中改动行必须贴住栏头");
+  assert.equal(await page.locator("#round-time").count(), 0, "轮次时间只在 Round request 里出现");
+  assert.equal(await page.locator("#changed-layout").evaluate(el => el.closest("header")?.classList.contains("pane-heading")), true, "Tree/Flat 在 CHANGED 栏头");
+  assert.equal(await page.locator(".files-footer .pane-toggle").count(), 1, "files 栏折叠在底栏");
+  await page.locator('#changed .file-button[data-path="notes.unknown"]').click();
+  await page.waitForFunction(() => document.querySelector("#content-name")?.textContent === "notes.unknown");
+  assert.equal(await page.locator(".diff-surface .tk-k").count(), 0, "未知扩展名保持单色");
+  await page.locator('#changed .file-button[data-path="src/diffview.go"]').click();
+  await page.waitForFunction(() => document.querySelector("#content-name")?.textContent === "src/diffview.go");
+  assert.ok(await page.locator(".diff-surface .tk-k").count() > 0, "Go diff 必须有 token 颜色");
   await page.locator("#project-menu > summary").click();
-  assert.equal(await page.getByRole("button", { name: "移除当前项目", exact: true }).isVisible(), true);
+  assert.equal(await page.getByRole("button", { name: "Remove current project", exact: true }).isVisible(), true);
   await page.keyboard.press("Escape");
-  assert.equal(await page.getByRole("button", { name: "移除当前项目", exact: true }).isVisible(), false);
+  assert.equal(await page.getByRole("button", { name: "Remove current project", exact: true }).isVisible(), false);
   await shoot("01-review");
   await page.locator('.content-pane .pane-toggle').click();
   assert.ok(await page.locator("#reply-pane").evaluate(node => node.getBoundingClientRect().width > 900));
@@ -113,13 +131,19 @@ try {
   await shoot("04-history");
   await page.locator('.reply-pane .rail-button').click();
   await page.click("#show-source");
+  assert.equal(await page.locator("#show-source").getAttribute("aria-pressed"), "true");
+  assert.equal(await page.locator("#content-name").textContent(), "Reply source");
+  assert.equal(await page.locator("#source-toolbar").isVisible(), true);
+  assert.equal(await page.locator("#doc-toolbar").isVisible(), false);
+  assert.equal(await page.locator("#content-pane > footer").isVisible(), false);
   await page.fill("#reply-source", "# 临时预览\n\n" + reply);
   await page.waitForFunction(() => document.querySelector("#document h1")?.textContent === "临时预览");
   await shoot("05-source");
   await page.click("#show-source");
+  assert.equal(await page.locator("#show-source").getAttribute("aria-pressed"), "false");
   await page.locator(".commit-row").first().waitFor();
   await page.selectOption("#rounds", "round-1");
-  await page.waitForFunction(() => document.querySelector("#content-name").textContent === "diffview.go");
+  await page.waitForFunction(() => document.querySelector("#content-name").textContent === "src/diffview.go");
   await page.locator("#tree .file-button", { hasText: "app.go" }).click();
   await page.locator(".cm-content").waitFor();
   await page.locator(".cm-content").click();
@@ -154,16 +178,20 @@ try {
   await page.locator("#message-input").fill("继续讨论这个改动");
   await shoot("08-input");
   await page.click("#toggle-input");
-  await page.click("#theme");
+  await page.click("#settings-menu > summary");
+  await page.click('[data-setting="theme"] [data-value="light"]');
+  await page.click("#settings-menu > summary");
   await shoot("09-light");
-  await page.click("#theme");
+  await page.click("#settings-menu > summary");
+  await page.click('[data-setting="theme"] [data-value="dark"]');
+  await page.click("#settings-menu > summary");
   await page.setViewportSize({ width: 1050, height: 900 });
   const toolbarOverflows = await page.locator(".reply-header").evaluate(node => node.scrollWidth > node.clientWidth);
   assert.equal(toolbarOverflows, false, "窄栏工具条不能溢出");
   await shoot("10-narrow");
   await page.locator("#project-menu > summary").click();
   page.once("dialog", dialog => dialog.accept());
-  await page.getByRole("button", { name: "移除当前项目", exact: true }).click();
+  await page.getByRole("button", { name: "Remove current project", exact: true }).click();
   await page.waitForFunction(() => document.querySelectorAll(".project").length === 14);
   // Wait one debounce interval before an external write, so the initial tree
   // load cannot masquerade as a working watch on the newly selected project.

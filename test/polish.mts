@@ -1,19 +1,19 @@
 import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, mkdir, realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { chromium } from "playwright";
 import { startConsole } from "../src/server.ts";
 
-let service, browser, context;
+let service, browser, context, directory;
 before(async () => {
-  const directory = await mkdtemp(join(tmpdir(), "review-polish-"));
+  directory = await mkdtemp(join(tmpdir(), "review-polish-"));
   service = await startConsole({ directory, token: "polish", web: resolve("dist/web") });
   browser = await chromium.launch({ headless: true, channel: "chrome" });
   context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
 });
-after(async () => { await browser?.close(); await service?.close(); });
+after(async () => { for (const page of context?.pages() || []) await page.close({ runBeforeUnload: false }); await browser?.close(); await service?.close(); });
 
 test("browser Add folder opens the path prompt", async () => {
   const page = await context.newPage();
@@ -92,7 +92,9 @@ test("scratch tabs and preview switches retain selection and undo history", asyn
   await source.fill("beta");
   await page.getByRole("tab").first().click();
   await page.click('[data-view="preview"]');
-  await page.selectOption("#font", "mono");
+  await page.click("#settings-menu > summary");
+  await page.click('[data-setting="font"] [data-value="mono"]');
+  await page.click("#settings-menu > summary");
   await page.click('[data-view="source"]');
   await source.press("X");
   assert.equal(await source.innerText(), "alphXa", "切换标签和预览不能重置光标");
@@ -112,8 +114,8 @@ test("both Diff sources retain edits and undo history through the comparison vie
   const page = await context.newPage();
   await page.goto(service.origin + "/scratch");
   await page.click("#new-diff");
-  const before = page.getByRole("textbox", { name: "旧文本", exact: true });
-  const after = page.getByRole("textbox", { name: "新文本", exact: true });
+  const before = page.getByRole("textbox", { name: "Before", exact: true });
+  const after = page.getByRole("textbox", { name: "After", exact: true });
   await before.fill("old\nsame");
   await after.fill("new\nsame");
   assert.equal(await page.locator(".cm-lineNumbers").count(), 2);
@@ -130,4 +132,81 @@ test("both Diff sources retain edits and undo history through the comparison vie
   assert.equal(await page.locator("td.content.insert").count(), 0);
   assert.match(await page.locator("td.content.delete").first().innerText(), /old/);
   await page.close({ runBeforeUnload: false });
+});
+
+
+test("projects and files dividers drag, persist, keyboard-adjust, reset and clamp the content", async () => {
+  const page = await context.newPage();
+  await page.goto(service.origin + "/#token=polish");
+  await page.locator(".pane-toggle svg").first().waitFor();
+  await page.evaluate(() => { for (const key of ["review-projects-width", "review-files-width", "review-reply-width"]) localStorage.removeItem(key); });
+  await page.reload();
+  await page.locator(".pane-toggle svg").first().waitFor();
+  const width = id => page.locator(id).evaluate(el => Math.round(el.getBoundingClientRect().width));
+  const projects = await width("#projects-pane");
+  const handle = page.locator('.resizer[data-edge="projects"]');
+  const box = await handle.boundingBox();
+  await page.mouse.move(box.x + 3, 300); await page.mouse.down();
+  await page.mouse.move(box.x + 43, 300); await page.mouse.up();
+  assert.ok(await width("#projects-pane") > projects + 30, "projects divider should drag");
+  await page.waitForFunction(threshold => Number(localStorage.getItem("review-projects-width")) > threshold, projects + 30);
+  const persisted = Number(await page.evaluate(() => localStorage.getItem("review-projects-width")));
+  assert.ok(persisted > projects + 30);
+  await page.reload();
+  await page.locator('.resizer[data-edge="projects"]').waitFor();
+  assert.ok(Math.abs(await width("#projects-pane") - persisted) < 2, "projects width should persist");
+  const beforeKey = await width("#projects-pane");
+  await page.locator('.resizer[data-edge="projects"]').focus();
+  await page.keyboard.press("ArrowLeft");
+  assert.ok(Math.abs(await width("#projects-pane") - (beforeKey - 20)) < 2, "arrow key should move the divider");
+  await page.locator('.resizer[data-edge="files"]').dblclick();
+  assert.equal(await width("#projects-pane"), 210);
+  assert.equal(await width("#files-pane"), 248);
+  assert.equal(await width("#reply-pane"), 470);
+  const files = page.locator('.resizer[data-edge="files"]');
+  const filesBox = await files.boundingBox();
+  await page.mouse.move(filesBox.x + 3, 300); await page.mouse.down();
+  await page.mouse.move(1200, 300); await page.mouse.up();
+  assert.ok(await width("#content-pane") >= 279, "content must keep its 280px minimum");
+  await page.close();
+});
+
+test("project location keeps the last two segments and the full path in the title", async () => {
+  const root = join(directory, "workspace", "deep", "project-x");
+  await mkdir(root, { recursive: true });
+  const response = await fetch(service.origin + "/api/projects", { method: "POST", headers: { Authorization: "Bearer polish", "Content-Type": "application/json" }, body: JSON.stringify({ root }) });
+  assert.ok(response.ok, await response.text());
+  const page = await context.newPage();
+  await page.goto(service.origin + "/#token=polish");
+  await page.locator(".pane-toggle svg").first().waitFor();
+  const project = page.locator(".project", { hasText: "project-x" }).first();
+  await project.waitFor();
+  assert.equal(await project.getAttribute("title"), await realpath(root));
+  assert.equal(await project.locator(".project-path").textContent(), "…/deep/project-x");
+  assert.equal(await project.locator(".branch").count(), 0, "no fake branch when Git is unavailable");
+  await page.close();
+});
+
+test("theme, prose font and default preview sync between the console and the Markdown window", async () => {
+  const consolePage = await context.newPage();
+  const editorPage = await context.newPage();
+  await consolePage.goto(service.origin + "/#token=polish");
+  await consolePage.locator(".pane-toggle svg").first().waitFor();
+  await editorPage.goto(service.origin + "/scratch");
+  await editorPage.locator("#scratch-toolbar").waitFor();
+  await consolePage.click("#settings-menu > summary");
+  await consolePage.click('[data-setting="theme"] [data-value="light"]');
+  await consolePage.click("#settings-menu > summary");
+  await editorPage.waitForFunction(() => !document.documentElement.classList.contains("dark"));
+  await consolePage.click("#settings-menu > summary");
+  await consolePage.click('[data-setting="font"] [data-value="serif"]');
+  await consolePage.click("#settings-menu > summary");
+  await editorPage.waitForFunction(() => document.documentElement.dataset.font === "serif");
+  await consolePage.click("#settings-menu > summary");
+  await consolePage.click('label.check:has(#default-preview)');
+  await consolePage.click("#settings-menu > summary");
+  await editorPage.waitForFunction(() => document.querySelector("#default-preview")?.checked === true);
+  assert.equal(await editorPage.evaluate(() => localStorage.getItem("review-theme")), "light");
+  await consolePage.close();
+  await editorPage.close();
 });

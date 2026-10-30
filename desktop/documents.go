@@ -39,7 +39,7 @@ func (Desktop) ReadDocument(path string) (document, error) { return readDocument
 
 func (Desktop) PickDocuments(ctx context.Context) ([]document, error) {
 	paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{
-		Parent: mygo.CallerWindow(ctx), Title: "打开 Markdown", Multiple: true,
+		Parent: mygo.CallerWindow(ctx), Title: "Open Markdown", Multiple: true,
 		Filters: []mygo.FileFilter{{Name: "Markdown", Extensions: []string{"md", "markdown", "mdx", "txt"}}},
 	})
 	if err != nil {
@@ -58,7 +58,7 @@ func (Desktop) PickDocuments(ctx context.Context) ([]document, error) {
 
 func (Desktop) PickSavePath(ctx context.Context, suggested string) (string, error) {
 	return mygo.Dialog.Save(mygo.SaveDialogOptions{
-		Parent: mygo.CallerWindow(ctx), Title: "保存 Markdown", DefaultPath: suggested,
+		Parent: mygo.CallerWindow(ctx), Title: "Save Markdown", DefaultPath: suggested,
 		CreateDirectories: true, Filters: []mygo.FileFilter{{Name: "Markdown", Extensions: []string{"md"}}},
 	})
 }
@@ -82,7 +82,7 @@ func writeDocument(input documentWrite) (document, error) {
 			return document{}, err
 		}
 		if contentVersion(disk) != input.Version {
-			return document{}, fmt.Errorf("磁盘文件已变化")
+			return document{}, fmt.Errorf("The file changed on disk")
 		}
 	}
 	for _, img := range input.Images {
@@ -148,16 +148,16 @@ func (Desktop) ReadImage(documentPath, source string) (string, error) {
 	}
 	kind := mime.TypeByExtension(strings.ToLower(filepath.Ext(path)))
 	if !strings.HasPrefix(kind, "image/") {
-		return "", fmt.Errorf("不是图片文件")
+		return "", fmt.Errorf("Not an image file")
 	}
 	return "data:" + kind + ";base64," + base64.StdEncoding.EncodeToString(data), nil
 }
 
 func (Desktop) ConfirmClose(ctx context.Context, name string) (int, error) {
 	result, err := mygo.Dialog.Message(mygo.MessageOptions{
-		Parent: mygo.CallerWindow(ctx), Type: mygo.MessageQuestion, Title: "保存修改",
-		Message: "要保存对“" + name + "”的修改吗？", Detail: "不保存将丢弃本次修改。",
-		Buttons: []string{"保存", "不保存", "取消"}, DefaultButton: 0, CancelButton: 2,
+		Parent: mygo.CallerWindow(ctx), Type: mygo.MessageQuestion, Title: "Save Changes",
+		Message: "Save changes to \"" + name + "\"?", Detail: "Not saving will discard these changes.",
+		Buttons: []string{"Save", "Don't Save", "Cancel"}, DefaultButton: 0, CancelButton: 2,
 	})
 	return result.Button, err
 }

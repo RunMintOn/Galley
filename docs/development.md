@@ -34,7 +34,7 @@ npm run test:visual
 npm run verify:package
 ```
 
-`check` 包含类型检查、公共接口测试、Go 的 Node 查找与文件读写测试和网页/服务构建。只运行 Go 测试可使用 `npm run test:go`，不会打开窗口。浏览器测试使用隔离数据与无头 Chrome，不连接日用 Agent。截图和测试结果在 `test-results/`，下次运行会更新。
+`check` 包含类型检查、公共接口测试、Go 的 Node 查找与文件读写测试和网页/服务构建。只运行 Go 测试可使用 `npm run test:go`，不会打开窗口。浏览器测试使用隔离数据与无头 Chrome，不连接日用 Agent。截图和测试结果在 `test-results/`，下次运行会更新。`test:visual` 从 `dist/web` 读取网页资源；修改 `web-src` 后先运行 `npm run build`，否则截图和断言仍来自旧构建。
 
 `test:editor` 覆盖文件树预览、相对图片、默认预览、栏宽拖动与恢复、剪贴板 JPEG、保存取消、关闭保存、查找替换和外部修改。原生对话框使用 IPC 替身，不打开系统面板；磁盘写入与冲突另由 Go 测试覆盖。截图在 `test-results/editor/`。`test:desktop` 实测系统保存面板的取消与落盘、再次保存，以及 macOS 文件打开事件进入已运行的独立编辑窗口。Finder 冷启动仍需单独验收。
 

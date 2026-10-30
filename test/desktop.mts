@@ -27,7 +27,7 @@ try {
  const main=await wait(async()=>{const w=(await call("windows")).windows[0];return w&&await evaluate(w.id,"!!window.reviewDesktop")&&w});
  const system=script=>execFileSync("osascript",["-e",`tell application "System Events"\n tell (first application process whose unix id is ${child.pid})\n ${script}\n end tell\nend tell`],{encoding:"utf8",timeout:10000}).trim();
  await mkdir(join(directory,"picked"));const picked=await realpath(join(directory,"picked"));
- await call("menu",{window:main.id,path:["File","审查台"]});
+ await call("menu",{window:main.id,path:["File","Review Console"]});
  await evaluate(main.id,"document.querySelector('#add-project').click()");
  await wait(()=>system('get exists sheet 1 of window "Review Console"')==="true");
  system('set frontmost to true\nkey code 53');
@@ -45,7 +45,7 @@ try {
  system('click button "添加" of sheet 1 of window "Review Console"');
  await wait(()=>evaluate(main.id,"document.querySelectorAll('.project').length===2"));
  assert.ok(await evaluate(main.id,`[...document.querySelectorAll('.project')].some(el=>el.title===${JSON.stringify(picked)})`));
- await call("menu",{window:main.id,path:["File","Markdown 编辑器"]});
+ await call("menu",{window:main.id,path:["File","Markdown Editor"]});
  const scratch=await wait(async()=>(await call("windows")).windows.find(w=>w.id!==main.id));
  await wait(()=>evaluate(scratch.id,"!!window.reviewDesktop"));
  const raiseScratch=async()=>system('set frontmost to true\nperform action "AXRaise" of window '+JSON.stringify(await evaluate(scratch.id,"document.title")));
@@ -129,12 +129,12 @@ try {
  await call("menu",{window:scratch.id,path:["File","新建 Markdown 标签"]});
  await evaluate(scratch.id,"document.querySelector('#scratch-source .cm-content').focus();document.execCommand('insertText',false,'# Native save')");
  scratchWindow=JSON.stringify(await evaluate(scratch.id,"document.title"));
- await call("menu",{window:scratch.id,path:["File","保存文件"]});
+ await call("menu",{window:scratch.id,path:["File","Save File"]});
  await wait(()=>sheets("get exists sheet 1 of window "+scratchWindow)==="true");
  system("set frontmost to true\nkey code 53");
  await wait(()=>sheets("get exists sheet 1 of window "+scratchWindow)==="false");
  assert.equal(await evaluate(scratch.id,"window.reviewDesktop.dirty()"),true,"取消保存不能丢失草稿");
- await call("menu",{window:scratch.id,path:["File","保存文件"]});
+ await call("menu",{window:scratch.id,path:["File","Save File"]});
  await wait(()=>sheets("get exists sheet 1 of window "+scratchWindow)==="true");
  system('set frontmost to true\nkeystroke "g" using {command down, shift down}');
  await wait(()=>sheets("get exists sheet 1 of sheet 1 of window "+scratchWindow)==="true");
@@ -147,7 +147,7 @@ try {
  const savedPath=join(root,"native-save.md");
  await wait(async()=>await readFile(savedPath,"utf8")==="# Native save");
  await evaluate(scratch.id,"document.querySelector('#scratch-source .cm-content').focus();document.execCommand('insertText',false,' saved')");
- await call("menu",{window:scratch.id,path:["File","保存文件"]});
+ await call("menu",{window:scratch.id,path:["File","Save File"]});
  await wait(async()=>(await readFile(savedPath,"utf8")).includes("saved"));
 
  const finderFile=join(root,"finder.md");
@@ -164,11 +164,11 @@ try {
  for(const [name,w] of [["review",main],["scratch",scratch]]){const png=await call("capture",{window:w.id});await writeFile(join(shots,name+".png"),Buffer.from(png.png,"base64"));}
  const memory=execFileSync("ps",["-o","rss=","-p",String(child.pid)],{encoding:"utf8"}).trim();
  const beforeZoom=await evaluate(main.id,"window.innerWidth");
- await call("menu",{window:main.id,path:["View","放大"]});
+ await call("menu",{window:main.id,path:["View","Zoom In"]});
  await wait(async()=>(await evaluate(main.id,"window.innerWidth"))<beforeZoom);
- await call("menu",{window:main.id,path:["View","实际大小"]});
+ await call("menu",{window:main.id,path:["View","Actual Size"]});
  await wait(async()=>(await evaluate(main.id,"window.innerWidth"))===beforeZoom);
- await call("menu",{window:main.id,path:["File","退出应用"]});
+ await call("menu",{window:main.id,path:["File","Quit Review Console"]});
  await wait(()=>{
   if(child.exitCode!==null)return true;
   if(sheets('get exists sheet 1 of window '+scratchWindow)==="true")sheets('click button "不保存" of sheet 1 of window '+scratchWindow);

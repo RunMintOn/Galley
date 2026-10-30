@@ -25,7 +25,7 @@ type Desktop struct{}
 // PickFolder opens the system folder chooser so adding a project never asks the
 // reader to type an absolute path by hand.
 func (Desktop) PickFolder(ctx context.Context) (string, error) {
-	paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{Title: "选择项目目录", ButtonLabel: "添加", Directory: true, Parent: mygo.CallerWindow(ctx)})
+	paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{Title: "Choose Project Folder", ButtonLabel: "Add", Directory: true, Parent: mygo.CallerWindow(ctx)})
 	if err != nil || len(paths) == 0 {
 		return "", err
 	}
@@ -144,7 +144,7 @@ func openScratch() {
 		scratch.Focus()
 		return
 	}
-	scratch = mygo.NewWindow(mygo.WindowOptions{Title: "Markdown", URL: service.Origin + "/scratch", Width: 1280, Height: 850, MinWidth: 700, MinHeight: 500, Page: mygo.PageOptions{TrustedOrigins: []string{service.Origin}, Session: webSession}})
+	scratch = mygo.NewWindow(mygo.WindowOptions{Title: "Markdown Editor", URL: service.Origin + "/scratch", Width: 1280, Height: 850, MinWidth: 700, MinHeight: 500, Page: mygo.PageOptions{TrustedOrigins: []string{service.Origin}, Session: webSession}})
 	configure(scratch)
 }
 func targetArg(args []string) string {
@@ -183,19 +183,19 @@ func menu() *mygo.Menu {
 	}
 	tabs := []*mygo.MenuItem{}
 	for i := 1; i <= 9; i++ {
-		tabs = append(tabs, item(fmt.Sprintf("标签 %d", i), fmt.Sprintf("CmdOrCtrl+%d", i), fmt.Sprintf("tab:%d", i), true))
+		tabs = append(tabs, item(fmt.Sprintf("Tab %d", i), fmt.Sprintf("CmdOrCtrl+%d", i), fmt.Sprintf("tab:%d", i), true))
 	}
 	return mygo.NewMenu([]*mygo.MenuItem{
 		{Role: mygo.RoleAppMenu},
 		{Label: "File", Submenu: []*mygo.MenuItem{
-			{Label: "审查台", Click: func(_ *mygo.MenuItem, _ *mygo.Window) { openReview("") }},
-			{Label: "Markdown 编辑器", Accelerator: "CmdOrCtrl+Shift+N", Click: func(_ *mygo.MenuItem, _ *mygo.Window) { openScratch() }},
-			{Label: "打开…", Accelerator: "CmdOrCtrl+O", Click: func(_ *mygo.MenuItem, _ *mygo.Window) {
+			{Label: "Review Console", Click: func(_ *mygo.MenuItem, _ *mygo.Window) { openReview("") }},
+			{Label: "Markdown Editor", Accelerator: "CmdOrCtrl+Shift+N", Click: func(_ *mygo.MenuItem, _ *mygo.Window) { openScratch() }},
+			{Label: "Open…", Accelerator: "CmdOrCtrl+O", Click: func(_ *mygo.MenuItem, _ *mygo.Window) {
 				openScratch()
 				w := scratch
 				go func() {
 					paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{
-						Parent: w, Title: "打开 Markdown", Multiple: true,
+						Parent: w, Title: "Open Markdown", Multiple: true,
 						Filters: []mygo.FileFilter{{Name: "Markdown", Extensions: []string{"md", "markdown", "mdx", "txt"}}},
 					})
 					if err != nil {
@@ -209,29 +209,29 @@ func menu() *mygo.Menu {
 					})
 				}()
 			}},
-			item("新建 Markdown 标签", "CmdOrCtrl+T", "new-tab", true),
-			item("新建 Diff 标签", "CmdOrCtrl+Shift+T", "new-diff", true),
-			{Label: "关闭标签", Accelerator: "CmdOrCtrl+W", Click: func(_ *mygo.MenuItem, w *mygo.Window) {
+			item("New Markdown Tab", "CmdOrCtrl+T", "new-tab", true),
+			item("New Diff Tab", "CmdOrCtrl+Shift+T", "new-diff", true),
+			{Label: "Close Tab", Accelerator: "CmdOrCtrl+W", Click: func(_ *mygo.MenuItem, w *mygo.Window) {
 				if w == scratch {
 					command(w, "close-tab")
 				} else if w != nil {
 					w.Close()
 				}
 			}},
-			item("保存文件", "CmdOrCtrl+S", "save", false),
-			item("另存为…", "CmdOrCtrl+Shift+S", "save-as", true),
-			{Label: "关闭窗口", Accelerator: "CmdOrCtrl+Shift+W", Click: func(_ *mygo.MenuItem, w *mygo.Window) {
+			item("Save File", "CmdOrCtrl+S", "save", false),
+			item("Save As…", "CmdOrCtrl+Shift+S", "save-as", true),
+			{Label: "Close Window", Accelerator: "CmdOrCtrl+Shift+W", Click: func(_ *mygo.MenuItem, w *mygo.Window) {
 				if w != nil {
 					w.Close()
 				}
 			}},
-			{Label: "退出应用", Accelerator: "CmdOrCtrl+Q", Click: func(_ *mygo.MenuItem, _ *mygo.Window) { mygo.App.Quit() }},
+			{Label: "Quit Review Console", Accelerator: "CmdOrCtrl+Q", Click: func(_ *mygo.MenuItem, _ *mygo.Window) { mygo.App.Quit() }},
 		}},
 		{Label: "Edit", Submenu: []*mygo.MenuItem{
 			item("Undo", "CmdOrCtrl+Z", "undo", false),
 			item("Redo", "CmdOrCtrl+Shift+Z", "redo", false),
-			item("查找", "CmdOrCtrl+F", "find", false),
-			item("替换", "CmdOrCtrl+Alt+F", "replace", false),
+			item("Find", "CmdOrCtrl+F", "find", false),
+			item("Replace", "CmdOrCtrl+Alt+F", "replace", false),
 			{Type: mygo.MenuItemSeparator},
 			{Role: mygo.RoleCut},
 			{Role: mygo.RoleCopy},
@@ -243,13 +243,13 @@ func menu() *mygo.Menu {
 			{Label: "Speech", Submenu: []*mygo.MenuItem{{Role: mygo.RoleStartSpeaking}, {Role: mygo.RoleStopSpeaking}}},
 		}},
 		{Label: "View", Submenu: []*mygo.MenuItem{
-			item("回复源码", "CmdOrCtrl+Enter", "source", false),
-			item("上一轮", "", "previous", false),
-			item("下一轮", "", "next", false),
+			item("Reply Source", "CmdOrCtrl+Enter", "source", false),
+			item("Previous Round", "", "previous", false),
+			item("Next Round", "", "next", false),
 			{Type: mygo.MenuItemSeparator},
-			{Label: "放大", Accelerator: "CmdOrCtrl+=", Click: zoom(+0.1)},
-			{Label: "缩小", Accelerator: "CmdOrCtrl+-", Click: zoom(-0.1)},
-			{Label: "实际大小", Accelerator: "CmdOrCtrl+0", Click: zoom(0)},
+			{Label: "Zoom In", Accelerator: "CmdOrCtrl+=", Click: zoom(+0.1)},
+			{Label: "Zoom Out", Accelerator: "CmdOrCtrl+-", Click: zoom(-0.1)},
+			{Label: "Actual Size", Accelerator: "CmdOrCtrl+0", Click: zoom(0)},
 		}},
 		{Label: "Window", Submenu: tabs},
 	})
@@ -279,8 +279,8 @@ func main() {
 	output, err := cmd.Output()
 	if err != nil {
 		failure := &startupFailure{
-			message:    "无法启动本地服务",
-			detail:     "请复制错误信息以便排查。",
+			message:    "Could not start the local service",
+			detail:     "Copy the details for troubleshooting.",
 			diagnostic: err.Error(),
 		}
 		if exit, ok := err.(*exec.ExitError); ok {
@@ -294,7 +294,7 @@ func main() {
 	}
 	u, err := url.Parse(service.Origin)
 	if err != nil || u.Scheme != "http" || u.Hostname() != "127.0.0.1" || u.Port() == "" {
-		log.Fatal("服务地址无效")
+		log.Fatal("Invalid service address")
 	}
 	mygo.Bind(Desktop{})
 	mygo.App.OnOpenFile(queueDocument)

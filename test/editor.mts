@@ -33,10 +33,11 @@ test("file-tree Markdown previews images, honors the default, and keeps reply co
     await page.locator(".file-preview h1").waitFor();
     assert.equal(await page.locator(".file-preview h1").innerText(), "Skill");
     await page.waitForFunction(() => document.querySelector(".file-preview img")?.naturalWidth === 1);
-    assert.equal(await page.locator("#document").innerText(), "尚无回复");
-    await page.click("#file-preview-options summary");
-    await page.locator("#file-preview-options .menu-items").screenshot({ path: "test-results/editor/preview-options.png" });
-    await page.check("#default-preview");
+    assert.equal(await page.locator("#document").innerText(), "No reply yet");
+    await page.click("#settings-menu > summary");
+    await page.locator("#settings-menu .popover").screenshot({ path: "test-results/editor/preview-options.png" });
+    await page.click('label.check:has(#default-preview)');
+    await page.click("#settings-menu > summary");
     await page.reload();
     await page.locator('#tree [data-path="SKILL.md"]').click();
     await page.locator(".file-preview h1").waitFor();
@@ -44,7 +45,9 @@ test("file-tree Markdown previews images, honors the default, and keeps reply co
     await page.screenshot({ path: "test-results/editor/review-dark.png" });
     await page.locator('.file-views [data-view="split"]').click();
     assert.equal(await page.locator(".file-view .editor-host").isVisible(), true);
-    await page.click("#theme");
+    await page.click("#settings-menu > summary");
+    await page.click('[data-setting="theme"] [data-value="light"]');
+    await page.click("#settings-menu > summary");
     await page.screenshot({ path: "test-results/editor/review-light.png" });
   } finally { await context.close(); }
 });
@@ -54,7 +57,7 @@ test("reply divider drags, persists, folds and fits a narrow window", async () =
   const page = await context.newPage();
   try {
     await page.goto(service.origin + "/#token=editor");
-    const divider = page.locator("#reply-resizer");
+    const divider = page.locator('.resizer[data-edge="reply"]');
     await divider.waitFor();
     const before = await page.locator("#reply-pane").boundingBox();
     const box = await divider.boundingBox();
@@ -94,7 +97,7 @@ async function desktopPage() {
     if (method === "RebaseImagePaths") return args[2].map(s => s);
     if (method === "WriteDocument") {
       const input = args[0], old = disk.get(input.path);
-      if (input.version && old?.version !== input.version) throw new Error("磁盘文件已变化");
+      if (input.version && old?.version !== input.version) throw new Error("The file changed on disk");
       writes.push(input);
       const result = { path: input.path, content: input.content, version: "v" + (writes.length + 1) };
       disk.set(input.path, result); return result;
@@ -127,7 +130,7 @@ test("new document pastes a JPEG, previews immediately, then saves Markdown and 
     assert.equal(ui.writes.length, 0, "cancelling the save dialog must keep the draft");
     ui.pick("/documents/Notes.md"); await page.evaluate(() => window.reviewDesktop.command("save"));
     assert.equal(ui.writes.length, 1);
-    assert.match(ui.writes[0].content, /!\[图片\]\(Notes\.assets\/image-.*\.jpg\)/);
+    assert.match(ui.writes[0].content, /!\[Image\]\(Notes\.assets\/image-.*\.jpg\)/);
     assert.ok(ui.writes[0].images[0].data.startsWith("/9j/"), "persist the JPEG rather than treating it as text");
     assert.equal(await page.locator(".unsaved-dot").count(), 0);
     await source.press("End"); await source.press("X");
@@ -142,7 +145,9 @@ test("new document pastes a JPEG, previews immediately, then saves Markdown and 
 test("opened files support preview, save-as, search/replace and external changes", async () => {
   const ui = await desktopPage(), { page } = ui;
   try {
-    await page.check("#default-preview");
+    await page.click("#settings-menu > summary");
+    await page.click('label.check:has(#default-preview)');
+    await page.click("#settings-menu > summary");
     await page.click("#open-doc");
     await page.locator(".scratch-preview h1").waitFor();
     assert.equal(await page.locator("#scratch-source").count(), 0);
@@ -163,7 +168,7 @@ test("opened files support preview, save-as, search/replace and external changes
     await source.fill("# Local draft");
     ui.disk.set("/documents/Copy.md", { path: "/documents/Copy.md", content: "# Another external", version: "outside2" });
     await page.evaluate(() => window.dispatchEvent(new Event("focus")));
-    await page.waitForFunction(() => document.querySelector("#scratch-status").textContent.includes("磁盘文件已变化"));
+    await page.waitForFunction(() => document.querySelector("#scratch-status").textContent.includes("changed on disk"));
     assert.equal(await source.innerText(), "# Local draft");
     page.once("dialog", d => d.dismiss());
     await page.evaluate(() => window.reviewDesktop.command("save"));
@@ -172,7 +177,9 @@ test("opened files support preview, save-as, search/replace and external changes
     await page.click('[data-view="split"]');
     await page.locator(".scratch-preview h1").waitFor();
     await page.screenshot({ path: "test-results/editor/source-dark.png" });
-    await page.click("#theme");
+    await page.click("#settings-menu > summary");
+    await page.click('[data-setting="theme"] [data-value="light"]');
+    await page.click("#settings-menu > summary");
     await page.screenshot({ path: "test-results/editor/source-light.png" });
   } finally { await ui.context.close(); }
 });

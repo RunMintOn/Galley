@@ -42,7 +42,7 @@ if (window.mygo) {
     channel.onmessage = null;
     if (received) {
       channel.close();
-      message.textContent = protectedPage ? "已有审查台有未保存修改。请返回原页面；此页可关闭。" : "已转到现有审查台；此页可关闭。";
+      message.textContent = protectedPage ? "Another Review Console tab has unsaved changes. Return to it; this tab can be closed." : "Switched to the existing Review Console; this tab can be closed.";
       window.close();
     }
     return received;

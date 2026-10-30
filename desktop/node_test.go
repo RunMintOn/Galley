@@ -82,14 +82,14 @@ func TestNodeFailureIdentifiesOverrideAndHowToRemoveIt(t *testing.T) {
 	if failure == nil {
 		t.Fatal("expected an invalid environment override to fail")
 	}
-	for _, text := range []string{"配置来源：REVIEW_CONSOLE_NODE", "路径不存在", "unset REVIEW_CONSOLE_NODE", "launchctl unsetenv REVIEW_CONSOLE_NODE"} {
+	for _, text := range []string{"Configured by: REVIEW_CONSOLE_NODE", "Path does not exist", "unset REVIEW_CONSOLE_NODE", "launchctl unsetenv REVIEW_CONSOLE_NODE"} {
 		if !strings.Contains(failure.detail, text) {
 			t.Errorf("recovery instructions lack %q: %s", text, failure.detail)
 		}
 	}
 	t.Setenv("REVIEW_CONSOLE_NODE", "")
 	_, failure = findNode([]string{"--node=" + missing})
-	if failure == nil || !strings.Contains(failure.detail, "配置来源：--node") || !strings.Contains(failure.detail, "移除 --node") {
+	if failure == nil || !strings.Contains(failure.detail, "Configured by: --node") || !strings.Contains(failure.detail, "remove the --node") {
 		t.Fatalf("argument failure lacks its own recovery instructions: %v", failure)
 	}
 }
@@ -115,18 +115,18 @@ func TestNodeUnavailableExplainsRecovery(t *testing.T) {
 			if err == nil || path != "" {
 				t.Fatalf("expected failure, got %q, %v", path, err)
 			}
-			for _, text := range []string{"22.19.0", "brew install node", "https://nodejs.org/zh-cn/download"} {
+			for _, text := range []string{"22.19.0", "brew install node", "https://nodejs.org/en/download"} {
 				if !strings.Contains(err.detail, text) {
 					t.Errorf("error lacks %q: %v", text, err)
 				}
 			}
-			if strings.Contains(err.detail, "登录 shell") {
+			if strings.Contains(err.detail, "Login shell") {
 				t.Error("shell diagnostics must not crowd the recovery instructions")
 			}
-			if !strings.Contains(err.diagnostic, "登录 shell") {
+			if !strings.Contains(err.diagnostic, "Login shell") {
 				t.Error("copyable diagnostics must retain shell failure details")
 			}
-			if name == "missing" && !strings.Contains(err.detail, "已经安装但未找到") {
+			if name == "missing" && !strings.Contains(err.detail, "Installed but not found") {
 				t.Error("missing Node must explain how to locate an existing installation")
 			}
 			if name == "old" && !strings.Contains(err.Error(), "v22.18.0") {
@@ -144,7 +144,7 @@ func TestNodeProbeHonorsDeadline(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
 	_, err := resolveNode(ctx, path, nil, noShellNode)
-	if err == nil || !strings.Contains(err.Error(), "超时") {
+	if err == nil || !strings.Contains(err.Error(), "timed out") {
 		t.Fatalf("expected timeout, got %v", err)
 	}
 }

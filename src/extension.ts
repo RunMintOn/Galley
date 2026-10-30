@@ -108,7 +108,7 @@ export default function reviewConsole(pi: ExtensionAPI) {
       await publish({
         id: completed.id, sessionId: ctx.sessionManager.getSessionId(), entryId: completed.reply,
         outcome: completed.outcome, report, end: Date.now(),
-        notice: capture ? (report ? undefined : "本轮没有使用已追踪的写文件工具") : "旧捕获仍启用；新插件未重复捕获",
+        notice: capture ? (report ? undefined : "No tracked file-writing tools were used in this round") : "Old capture is still on; this plugin did not capture again",
       });
     } catch (error) { ctx.ui.notify(`本轮报告未能发布，请检查本地保存与连接：${error instanceof Error ? error.message : String(error)}`, "warning"); }
   });

@@ -1,30 +1,71 @@
-body { height: 100dvh; overflow: hidden; display: flex; flex-direction: column; }
-#scratch-toolbar { display: flex; align-items: center; gap: 8px; padding: 8px 12px; min-height: 44px; border-bottom: 1px solid var(--border); background: var(--projects); flex-wrap: wrap; }
-#scratch-toolbar strong { font-size: 12px; font-weight: 500; margin-right: 12px; }
-.grow { flex: 1; }
+body { height: 100dvh; overflow: hidden; display: flex; flex-direction: column; background: var(--background); }
+#scratch-toolbar {
+  display: flex; align-items: center; gap: 4px; flex-wrap: wrap;
+  min-height: var(--head-h); padding: 6px 12px; border-bottom: 1px solid var(--border);
+  background: var(--projects); flex: none;
+}
+#scratch-toolbar strong {
+  font: 500 10px/1.4 var(--ui); letter-spacing: .09em; text-transform: uppercase;
+  color: var(--muted); margin-right: 6px;
+}
+#scratch-toolbar button {
+  display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 8px;
+  border-radius: var(--r-control); color: var(--muted); font-size: 11px; white-space: nowrap;
+}
+#scratch-toolbar button:hover { background: var(--hover); color: var(--ink); }
+#scratch-toolbar button[aria-pressed=true] { background: var(--selected); color: var(--ink); }
+#scratch-toolbar .icon { width: 14px; height: 14px; }
+.grow { flex: 1; min-width: 0; }
 #scratch-shell { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-#scratch-tabs { display: flex; padding: 0; overflow: auto; background: var(--projects); border-bottom: 1px solid var(--border); min-height: 36px; }
+#scratch-tabs {
+  display: flex; padding: 0; overflow: auto; background: var(--projects);
+  border-bottom: 1px solid var(--border); min-height: 34px; flex: none;
+}
 .tab { display: flex; align-items: center; max-width: 220px; flex: none; border-right: 1px solid var(--border); color: var(--muted); }
 .tab:has([aria-selected=true]) { background: var(--selected); color: var(--ink); }
-.tab-select { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; padding: 6px 10px; }
-.tab-close { padding: 3px 6px; margin-right: 4px; }
+.tab-select {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left;
+  padding: 0 10px; height: 34px; font-size: 11.5px; border-radius: 0;
+}
+.tab-close { width: 22px; height: 22px; padding: 0; display: grid; place-items: center; margin-right: 4px; color: var(--subtle); border-radius: var(--r-control); }
+.tab-close .icon { width: 12px; height: 12px; }
+.tab-close:hover { color: var(--ink); background: var(--hover); }
 #scratch-shell.vertical { flex-direction: row; }
-.vertical #scratch-tabs { flex-direction: column; width: 216px; border-right: 1px solid var(--border); border-bottom: 0; padding: 8px; }
-.vertical .tab { max-width: none; }
-.vertical .tab-select { flex: 1; }
+.vertical #scratch-tabs { flex-direction: column; width: 216px; border-right: 1px solid var(--border); border-bottom: 0; padding: 8px; gap: 2px; }
+.vertical .tab { max-width: none; border-right: 0; border-radius: var(--r-control); }
+.vertical .tab-select { flex: 1; height: 28px; }
 #scratch-work { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; background: var(--sheet); overflow: hidden; }
 .scratch-empty { margin: auto; padding: 24px; color: var(--subtle); }
-.scratch-bar { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--border); }
-.scratch-bar input { min-width: 60px; flex: 1; border: 0; background: transparent; }
-.scratch-bar button[aria-pressed=true] { background: var(--selected); }
+.scratch-bar {
+  height: var(--toolbar-h); min-height: var(--toolbar-h); display: flex; align-items: center; gap: 8px;
+  padding: 0 12px; border-bottom: 1px solid var(--border); background: var(--panel); flex: none;
+}
+.scratch-bar input {
+  min-width: 60px; flex: 1; height: 24px; padding: 0 4px;
+  border: 0; background: transparent; color: var(--ink); font-size: 12.5px;
+}
+.scratch-bar input:focus-visible { outline: 1.5px solid var(--accent); outline-offset: -1.5px; }
+.scratch-bar .segmented { flex: none; }
 .scratch-panes { display: grid; grid-template-columns: 1fr 1fr; flex: 1; min-height: 0; }
 .scratch-panes.single { grid-template-columns: 1fr; }
-.scratch-panes > * { min-width: 0; min-height: 0; border-right: 1px solid var(--border); }
-.scratch-input { display: flex; flex-direction: column; }
-.scratch-input > label { padding: 6px 12px; color: var(--subtle); border-bottom: 1px solid var(--border); font: 10px/1.5 var(--mono); }
+.scratch-panes > * { min-width: 0; min-height: 0; }
+.scratch-panes > *:first-child:not(:last-child) { border-right: 1px solid var(--border); }
+.scratch-input { display: flex; flex-direction: column; min-height: 0; }
+.scratch-input > label {
+  padding: 6px 12px; color: var(--subtle); border-bottom: 1px solid var(--border);
+  font: 10px/1.5 var(--mono); background: var(--panel);
+}
 .scratch-preview { overflow: auto; }
-.scratch-preview .markdown-body { width: 100%; padding: 32px 28px 80px; }
-.scratch-panes > .diff-surface { overflow: auto; }
-.scratch-panes .diff-controls { position: sticky; top: 0; background: var(--sheet); z-index: 1; }
-#scratch-status { height: 26px; flex: none; padding: 4px 12px; color: var(--muted); font-size: 11px; border-top: 1px solid var(--border); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.scratch-preview .markdown-body { width: 100%; padding: 32px 20px 80px; font-size: 16.5px; }
+.scratch-preview .markdown-body h1 { font-size: 27px; }
+.scratch-panes > .diff-doc { min-height: 0; }
+.diff-doc { display: flex; flex-direction: column; min-height: 0; }
+.diff-doc > .diff-surface { flex: 1; min-height: 0; overflow: auto; }
+.diff-doc > .diff-surface .diffs { min-height: 0; }
+#scratch-status {
+  height: var(--foot-h); min-height: var(--foot-h); flex: none; padding: 0 12px;
+  color: var(--subtle); font-size: 10.5px; border-top: 1px solid var(--border);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  display: flex; align-items: center; background: var(--projects);
+}
 .unsaved-dot { color: var(--muted); }

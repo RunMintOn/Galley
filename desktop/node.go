@@ -11,8 +11,8 @@ import (
 	"time"
 )
 
-const nodeInstallHelp = "安装或更新 Node.js 22.19.0 或更高版本：\nhttps://nodejs.org/zh-cn/download\n已有 Homebrew 可运行 brew install node；已安装时用 brew upgrade node。"
-const nodeLocationHelp = "已经安装但未找到：在终端运行 command -v node 获取可执行文件的路径，再设置 REVIEW_CONSOLE_NODE。\nFinder 启动可在终端运行以下命令，将示例路径替换为实际路径后重新打开应用：\nlaunchctl setenv REVIEW_CONSOLE_NODE \"/absolute/path/to/node\""
+const nodeInstallHelp = "Install or update Node.js 22.19.0 or newer:\nhttps://nodejs.org/en/download\nWith Homebrew, run brew install node; if installed, run brew upgrade node."
+const nodeLocationHelp = "Installed but not found: run command -v node in a terminal to get the executable path, then set REVIEW_CONSOLE_NODE.\nFor Finder launches, run the following in a terminal with the real path, then reopen the app:\nlaunchctl setenv REVIEW_CONSOLE_NODE \"/absolute/path/to/node\""
 
 func findNode(args []string) (string, *startupFailure) {
 	explicit := os.Getenv("REVIEW_CONSOLE_NODE")
@@ -50,11 +50,11 @@ func findNode(args []string) (string, *startupFailure) {
 	defer cancel()
 	path, failure := resolveNode(ctx, explicit, candidates, nodeFromShell)
 	if failure != nil && explicit != "" {
-		recovery := "请修正或移除 --node 参数后重新打开应用；从 pi 启动时，请更新 pi 使用的 Node 并重启 pi。"
+		recovery := "Fix or remove the --node argument and reopen the app. When launched from pi, update the Node used by pi and restart pi."
 		if source == "REVIEW_CONSOLE_NODE" {
-			recovery = "可修正此路径，或取消固定位置，让应用自动查找。\n终端启动：unset REVIEW_CONSOLE_NODE\nFinder 启动：launchctl unsetenv REVIEW_CONSOLE_NODE\n然后重新打开应用。"
+			recovery = "Fix this path, or unset the pinned location so the app can search automatically.\nTerminal: unset REVIEW_CONSOLE_NODE\nFinder: launchctl unsetenv REVIEW_CONSOLE_NODE\nThen reopen the app."
 		}
-		failure.detail = "配置来源：" + source + "\n" + failure.detail + "\n\n" + recovery + "\n\n" + nodeInstallHelp
+		failure.detail = "Configured by: " + source + "\n" + failure.detail + "\n\n" + recovery + "\n\n" + nodeInstallHelp
 	}
 	return path, failure
 }
@@ -64,10 +64,10 @@ func resolveNode(ctx context.Context, explicit string, candidates []string, shel
 		if err := checkNode(ctx, explicit); err != nil {
 			reason := err.Error()
 			if os.IsNotExist(err) {
-				reason = "路径不存在"
+				reason = "Path does not exist"
 			}
 			return "", &startupFailure{
-				message: "指定的 Node.js 无法使用",
+				message: "The specified Node.js cannot be used",
 				detail:  explicit + "\n" + reason,
 			}
 		}
@@ -94,17 +94,17 @@ func resolveNode(ctx context.Context, explicit string, candidates []string, shel
 		}
 		unusable = unusable || !os.IsNotExist(err)
 	}
-	failures = append(failures, "登录 shell："+err.Error())
-	message := "未找到 Node.js 22.19.0 或更高版本"
-	detail := "尚未安装：\n" + nodeInstallHelp + "\n\n" + nodeLocationHelp
+	failures = append(failures, "Login shell: "+err.Error())
+	message := "Node.js 22.19.0 or newer was not found"
+	detail := "Not installed:\n" + nodeInstallHelp + "\n\n" + nodeLocationHelp
 	if unusable {
-		message = "找到的 Node.js 无法使用"
+		message = "The Node.js found cannot be used"
 		detail = failures[0] + "\n\n" + nodeInstallHelp
 	}
 	return "", &startupFailure{
 		message:    message,
 		detail:     detail,
-		diagnostic: "已检查 PATH、Homebrew、pi、Volta、nvm、fnm 和登录 shell。\n" + strings.Join(failures, "\n"),
+		diagnostic: "Checked PATH, Homebrew, pi, Volta, nvm, fnm, and the login shell.\n" + strings.Join(failures, "\n"),
 	}
 }
 
@@ -115,7 +115,7 @@ func checkNode(ctx context.Context, path string) error {
 	cmd.WaitDelay = 100 * time.Millisecond
 	output, err := cmd.Output()
 	if ctx.Err() != nil {
-		return fmt.Errorf("版本探测超时")
+		return fmt.Errorf("Version probe timed out")
 	}
 	if err != nil {
 		return err
@@ -123,17 +123,17 @@ func checkNode(ctx context.Context, path string) error {
 	version := strings.TrimSpace(string(output))
 	parts := strings.Split(strings.TrimPrefix(version, "v"), ".")
 	if len(parts) != 3 {
-		return fmt.Errorf("无法识别版本：%q；需要 Node.js 22.19.0 或更高版本", version)
+		return fmt.Errorf("Unrecognized version: %q; Node.js 22.19.0 or newer is required", version)
 	}
 	var numbers [3]int
 	for i, part := range parts {
 		numbers[i], err = strconv.Atoi(part)
 		if err != nil {
-			return fmt.Errorf("无法识别版本：%q；需要 Node.js 22.19.0 或更高版本", version)
+			return fmt.Errorf("Unrecognized version: %q; Node.js 22.19.0 or newer is required", version)
 		}
 	}
 	if numbers[0] < 22 || (numbers[0] == 22 && numbers[1] < 19) {
-		return fmt.Errorf("版本 %s 过旧；需要 Node.js 22.19.0 或更高版本", version)
+		return fmt.Errorf("Version %s is too old; Node.js 22.19.0 or newer is required", version)
 	}
 	return nil
 }
@@ -146,7 +146,7 @@ func nodeFromShell(ctx context.Context) (string, error) {
 	cmd.WaitDelay = 100 * time.Millisecond
 	output, err := cmd.Output()
 	if ctx.Err() != nil {
-		return "", fmt.Errorf("查找超时")
+		return "", fmt.Errorf("Lookup timed out")
 	}
 	if err != nil {
 		return "", err

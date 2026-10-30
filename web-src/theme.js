@@ -1,42 +1,54 @@
-const FONTS = [["system", "系统"], ["serif", "衬线"], ["mono", "等宽"]];
+const FONTS = ["system", "serif", "mono"];
+const PAPER = ["charcoal", "ivory"];
 
 export const defaultPreview = () => localStorage.getItem("review-default-preview") === "true";
+
 export function setupPreviewPreference() {
   const input = document.getElementById("default-preview");
+  if (!input) return;
   input.checked = defaultPreview();
-  input.onchange = () => {
-    localStorage.setItem("review-default-preview", String(input.checked));
-    const menu = input.closest("details");
-    if (menu) menu.open = false;
-  };
-  window.addEventListener("storage", e => { if (e.key === "review-default-preview") input.checked = defaultPreview(); });
+  input.onchange = () => localStorage.setItem("review-default-preview", String(input.checked));
+  window.addEventListener("storage", e => {
+    if (e.key === "review-default-preview") input.checked = defaultPreview();
+  });
 }
 
 export function setupTheme(paperRoot, onChange = () => {}) {
-  const theme = document.getElementById("theme"), paper = document.getElementById("paper"), font = document.getElementById("font");
+  const groups = {
+    theme: [...document.querySelectorAll('[data-setting="theme"] button')],
+    paper: [...document.querySelectorAll('[data-setting="paper"] button')],
+    font: [...document.querySelectorAll('[data-setting="font"] button')],
+  };
+  const state = {
+    theme: localStorage.getItem("review-theme") === "light" ? "light" : "dark",
+    paper: PAPER.includes(localStorage.getItem("review-paper")) ? localStorage.getItem("review-paper") : "charcoal",
+    font: FONTS.includes(localStorage.getItem("review-font")) ? localStorage.getItem("review-font") : "system",
+  };
   const apply = () => {
-    const dark = localStorage.getItem("review-theme") !== "light";
-    document.documentElement.classList.toggle("dark", dark);
-    theme.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
-      (dark ? '<circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"/>' : '<path d="M20.8 13A8.8 8.8 0 0 1 11 3.2 8.8 8.8 0 1 0 20.8 13Z"/>') + '</svg>';
-    theme.title = dark ? "切换到浅色主题" : "切换到深色主题";
-    theme.setAttribute("aria-label", theme.title);
-    paper.replaceChildren(new Option("Charcoal", "charcoal"), new Option("Ivory", "ivory"));
-    paper.value = localStorage.getItem("review-paper") === "ivory" ? "ivory" : "charcoal";
-    paperRoot.dataset.paper = paper.value;
-    // Both windows read the same key, so the prose font follows the reader
-    // from the review console to the scratch window.
-    const prose = localStorage.getItem("review-font") || "system";
-    document.documentElement.dataset.font = FONTS.some(([value]) => value === prose) ? prose : "system";
-    if (font) {
-      font.replaceChildren(...FONTS.map(([value, label]) => new Option(label, value)));
-      font.value = document.documentElement.dataset.font;
+    document.documentElement.classList.toggle("dark", state.theme === "dark");
+    document.documentElement.dataset.font = state.font;
+    paperRoot.dataset.paper = state.paper;
+    for (const preview of document.querySelectorAll(".file-preview")) preview.dataset.paper = state.paper;
+    for (const [key, buttons] of Object.entries(groups)) {
+      for (const button of buttons) button.setAttribute("aria-pressed", String(button.dataset.value === state[key]));
     }
     onChange();
   };
-  theme.onclick = () => { localStorage.setItem("review-theme", document.documentElement.classList.contains("dark") ? "light" : "dark"); apply(); };
-  paper.onchange = () => { localStorage.setItem("review-paper", paper.value); apply(); };
-  if (font) font.onchange = () => { localStorage.setItem("review-font", font.value); apply(); };
-  window.addEventListener("storage", e => { if (["review-theme", "review-paper", "review-font"].includes(e.key)) apply(); });
+  for (const [key, buttons] of Object.entries(groups)) {
+    for (const button of buttons) {
+      button.onclick = () => {
+        state[key] = button.dataset.value;
+        localStorage.setItem("review-" + key, state[key]);
+        apply();
+      };
+    }
+  }
+  window.addEventListener("storage", e => {
+    if (!["review-theme", "review-paper", "review-font"].includes(e.key)) return;
+    state.theme = localStorage.getItem("review-theme") === "light" ? "light" : "dark";
+    state.paper = PAPER.includes(localStorage.getItem("review-paper")) ? localStorage.getItem("review-paper") : "charcoal";
+    state.font = FONTS.includes(localStorage.getItem("review-font")) ? localStorage.getItem("review-font") : "system";
+    apply();
+  });
   apply();
 }

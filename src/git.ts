@@ -24,8 +24,8 @@ async function batchBlobs(root: string, objects: string[]) {
   let batch: { id: string; size: number }[] = [], bytes = 0;
   for (const line of info) {
     const [id, type, rawSize] = line.split(" "), size = Number(rawSize);
-    if (type !== "blob") texts.set(id, new Error("不是历史文本文件"));
-    else if (size > 2 * 1024 * 1024) texts.set(id, new Error("历史文件超过 2 MiB，未加载"));
+    if (type !== "blob") texts.set(id, new Error("Not a historical text file"));
+    else if (size > 2 * 1024 * 1024) texts.set(id, new Error("Historical file exceeds 2 MiB and was not loaded"));
     else {
       // Bound each subprocess's output without falling back to one process per file.
       if (bytes + size > 16 * 1024 * 1024 && batch.length) { batches.push(batch); batch = []; bytes = 0; }
@@ -40,27 +40,27 @@ async function batchBlobs(root: string, objects: string[]) {
       // Blob contents may contain arbitrary newlines or NULs; only the header is line-delimited.
       const start = data.indexOf(10, offset) + 1;
       const content = data.subarray(start, start + size); offset = start + size + 1;
-      if (content.includes(0)) texts.set(id, new Error("二进制历史文件不提供文本视图"));
+      if (content.includes(0)) texts.set(id, new Error("Binary historical files have no text view"));
       else {
         try { texts.set(id, new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(content)); }
-        catch { texts.set(id, new Error("历史文件不是 UTF-8 文本")); }
+        catch { texts.set(id, new Error("Historical file is not UTF-8 text")); }
       }
     }
   }
   return texts;
 }
 function hashOf(hash: string) {
-  if (!/^[0-9a-f]{40,64}$/i.test(hash)) throw new ConsoleError("提交 hash 无效");
+  if (!/^[0-9a-f]{40,64}$/i.test(hash)) throw new ConsoleError("Invalid commit hash");
   return hash;
 }
 export async function gitQuery(store: Store, operation: string, params: URLSearchParams) {
   const root = await realpath(params.get("root") || "");
-  if (!store.projects.some(p => p.root === root)) throw new ConsoleError("项目未授权", 403);
+  if (!store.projects.some(p => p.root === root)) throw new ConsoleError("Project not authorized", 403);
   const top = (await execute(root, ["rev-parse", "--show-toplevel"])).toString().trim();
   const prefix = relative(top, root);
   const repoPath = (path: string) => {
     const absolute = resolve(root, path);
-    if (!inside(root, absolute)) throw new ConsoleError("历史路径超出项目", 403);
+    if (!inside(root, absolute)) throw new ConsoleError("Historical path escapes the project", 403);
     return relative(top, absolute).split(sep).join("/");
   };
   const scoped = (path: string) => inside(root, resolve(top, path));
@@ -68,15 +68,15 @@ export async function gitQuery(store: Store, operation: string, params: URLSearc
   const blob = async (hash: string, path: string) => {
     const tree = (await execute(top, ["ls-tree", "-z", hash, "--", path])).toString();
     const entry = tree.split("\0").find(line => line.slice(line.indexOf("\t") + 1) === path);
-    if (!entry) throw new ConsoleError("该版本不存在此文件", 404);
+    if (!entry) throw new ConsoleError("This file does not exist at that revision", 404);
     const object = entry.split("\t")[0].split(" ");
-    if (object[1] !== "blob") throw new ConsoleError("不是历史文本文件");
+    if (object[1] !== "blob") throw new ConsoleError("Not a historical text file");
     const size = Number((await execute(top, ["cat-file", "-s", object[2]])).toString());
-    if (size > 2 * 1024 * 1024) throw new ConsoleError("历史文件超过 2 MiB，未加载", 413);
+    if (size > 2 * 1024 * 1024) throw new ConsoleError("Historical file exceeds 2 MiB and was not loaded", 413);
     const data = await execute(top, ["cat-file", "blob", object[2]], 2 * 1024 * 1024 + 1);
-    if (data.includes(0)) throw new ConsoleError("二进制历史文件不提供文本视图", 415);
+    if (data.includes(0)) throw new ConsoleError("Binary historical files have no text view", 415);
     try { return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(data); }
-    catch { throw new ConsoleError("历史文件不是 UTF-8 文本", 415); }
+    catch { throw new ConsoleError("Historical file is not UTF-8 text", 415); }
   };
   const totals = (files: { added: number; deleted: number; countable?: boolean }[]) => ({
     added: files.reduce((n, f) => n + f.added, 0), deleted: files.reduce((n, f) => n + f.deleted, 0),
@@ -118,7 +118,7 @@ export async function gitQuery(store: Store, operation: string, params: URLSearc
     for (const path of paths.slice(0, 500)) {
       try {
         const text = await readText(store, root, display(path));
-        if (text.partial) throw new Error("文件超过文本预览上限");
+        if (text.partial) throw new Error("File exceeds the text preview limit");
         const diff = diffFile(display(path), "", text.content);
         untracked.push({ path: display(path), beforePath: path, afterPath: path, added: diff.addedLines, deleted: 0, countable: true });
       } catch { untracked.push({ path: display(path), beforePath: path, afterPath: path, added: 0, deleted: 0, countable: false }); }
@@ -130,15 +130,15 @@ export async function gitQuery(store: Store, operation: string, params: URLSearc
     }
     const group = params.get("group"), path = params.get("path") || "";
     const entry = groups.find(g => g.id === group)?.files.find(f => f.path === path);
-    if (!entry) throw new ConsoleError("工作区差异已变化，请刷新后重试", 404);
+    if (!entry) throw new ConsoleError("The working-tree diff changed; refresh and retry", 404);
     const file: ChangedFile & { countable: boolean } = { path, status: "Modified", added: entry.added, deleted: entry.deleted, countable: entry.countable };
     try {
       const present = { before: group !== "untracked" && (group !== "staged" || !!current.hash), after: true };
       const index = async (p: string) => {
         const size = Number((await execute(top, ["cat-file", "-s", ":" + p])).toString());
-        if (size > 2 * 1024 * 1024) throw new Error("暂存文件超过 2 MiB");
+        if (size > 2 * 1024 * 1024) throw new Error("Staged file exceeds 2 MiB");
         const data = await execute(top, ["show", ":" + p], 2 * 1024 * 1024 + 1);
-        if (data.includes(0)) throw new Error("二进制文件不提供文本差异");
+        if (data.includes(0)) throw new Error("Binary files have no text diff");
         return new TextDecoder("utf-8", { fatal: true }).decode(data);
       };
       const readIndex = (p: string, side: "before" | "after") => index(p).catch(async e => {
@@ -157,7 +157,7 @@ export async function gitQuery(store: Store, operation: string, params: URLSearc
       else {
         try {
           const text = await readText(store, root, path);
-          if (text.partial) throw new Error("文件超过 2 MiB");
+          if (text.partial) throw new Error("File exceeds 2 MiB");
           after = text.content;
         } catch (e) { if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e; present.after = false; }
       }
@@ -176,7 +176,7 @@ export async function gitQuery(store: Store, operation: string, params: URLSearc
     if (ref) hashOf(ref);
     const limit = Math.max(1, Math.min(100, Number(params.get("limit") || 50)));
     const skip = Math.max(0, Math.min(100000, Number(params.get("skip") || 0)));
-    if (!Number.isInteger(limit) || !Number.isInteger(skip)) throw new ConsoleError("分页参数无效");
+    if (!Number.isInteger(limit) || !Number.isInteger(skip)) throw new ConsoleError("Invalid paging parameters");
     if (!(await head()).hash && !ref) return { commits: [] };
     const data = (await execute(top, ["log", `--max-count=${limit}`, `--skip=${skip}`, "--format=%x00%H%x00%P%x00%aI%x00%an%x00%s%x00", "--numstat", "-z", prefix ? "--no-renames" : "-M", "--diff-merges=first-parent", ref || "HEAD", "--", ...(prefix ? [prefix] : [])])).toString();
     const fields = data.split("\0");
@@ -207,7 +207,7 @@ export async function gitQuery(store: Store, operation: string, params: URLSearc
     const metadata = { author: meta[1], date: meta[2], subject: meta[3] };
     const parents = meta[0].split(" ").filter(Boolean);
     const parentIndex = Number(params.get("parent") || 0);
-    if (!Number.isInteger(parentIndex) || parentIndex < 0 || (parents.length && parentIndex >= parents.length)) throw new ConsoleError("父版本无效");
+    if (!Number.isInteger(parentIndex) || parentIndex < 0 || (parents.length && parentIndex >= parents.length)) throw new ConsoleError("Invalid parent revision");
     const parent = parents[parentIndex] || null;
     const args = parent
       ? ["diff-tree", "--no-ext-diff", "--no-textconv", "-r", "--no-commit-id", "--raw", "--no-abbrev", "-z", "-M", parent, hash]
@@ -223,7 +223,7 @@ export async function gitQuery(store: Store, operation: string, params: URLSearc
       const hasBefore = !!parent && status !== "A" && scoped(beforePath);
       const hasAfter = status !== "D" && scoped(afterPath);
       const file: ChangedFile = { path: display(target), status: !hasBefore ? "Added" : !hasAfter ? "Deleted" : "Modified", added: 0, deleted: 0 };
-      if (/^[RC]/.test(status)) file.notice = `原路径：${display(beforePath)}`;
+      if (/^[RC]/.test(status)) file.notice = `Original path: ${display(beforePath)}`;
       entries.push({ file, hasBefore, hasAfter, beforeID, afterID });
       if (entries.length >= 500) break;
     }
@@ -239,5 +239,5 @@ export async function gitQuery(store: Store, operation: string, params: URLSearc
     }
     return { hash, parent, parents, files: entries.map(e => e.file), ...metadata, ...(entries.length >= 500 ? { truncated: true } : {}) };
   }
-  throw new ConsoleError("未知 Git 查询", 404);
+  throw new ConsoleError("Unknown Git query", 404);
 }

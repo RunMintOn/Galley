@@ -23,12 +23,12 @@ export const inside = (root: string, path: string) => {
 };
 export async function projectPath(store: Store, root: string, path = "") {
   const canonical = await realpath(root);
-  if (!store.projects.some(p => p.root === canonical)) throw new ConsoleError("项目未授权", 403);
-  if (typeof path !== "string" || path.includes("\0")) throw new ConsoleError("路径无效");
+  if (!store.projects.some(p => p.root === canonical)) throw new ConsoleError("Project not authorized", 403);
+  if (typeof path !== "string" || path.includes("\0")) throw new ConsoleError("Invalid path");
   const target = resolve(canonical, path);
-  if (!inside(canonical, target)) throw new ConsoleError("路径超出项目", 403);
+  if (!inside(canonical, target)) throw new ConsoleError("Path escapes the project", 403);
   const actual = await realpath(target);
-  if (!inside(canonical, actual) || relative(canonical, actual).split(sep).includes(".git")) throw new ConsoleError("路径超出可访问范围", 403);
+  if (!inside(canonical, actual) || relative(canonical, actual).split(sep).includes(".git")) throw new ConsoleError("Path escapes the accessible area", 403);
   return actual;
 }
 export async function tree(store: Store, root: string, path: string) {
@@ -48,13 +48,13 @@ const imageTypes: Record<string, string> = { ".png": "image/png", ".jpg": "image
 export async function readImage(store: Store, root: string, path: string) {
   const actual = await projectPath(store, root, path);
   const type = imageTypes[extname(actual).toLowerCase()];
-  if (!type) throw new ConsoleError("不是图片文件", 415);
+  if (!type) throw new ConsoleError("Not an image file", 415);
   return { url: `data:${type};base64,${(await readFile(actual)).toString("base64")}` };
 }
 export async function saveImage(store: Store, body: { root: string; path: string; type: string; data: string }) {
   await projectPath(store, body.root, body.path);
   const ext = Object.keys(imageTypes).find(ext => imageTypes[ext] === body.type);
-  if (!ext) throw new ConsoleError("不支持的图片格式", 415);
+  if (!ext) throw new ConsoleError("Unsupported image format", 415);
   const assets = basename(body.path, extname(body.path)) + ".assets";
   const directory = resolve(await projectPath(store, body.root, dirname(body.path)), assets);
   await mkdir(directory, { recursive: true });
@@ -66,15 +66,15 @@ export async function saveImage(store: Store, body: { root: string; path: string
 const versionOf = (content: Buffer) => createHash("sha256").update(content).digest("hex");
 export async function readText(store: Store, root: string, path: string, offset = 0) {
   const actual = await projectPath(store, root, path);
-  if (!(await stat(actual)).isFile()) throw new ConsoleError("不是普通文件");
+  if (!(await stat(actual)).isFile()) throw new ConsoleError("Not a regular file");
   const handle = await open(actual, "r");
   try {
     const info = await handle.stat();
-    if (!info.isFile()) throw new ConsoleError("不是普通文件");
+    if (!info.isFile()) throw new ConsoleError("Not a regular file");
     const partial = info.size > EDIT_LIMIT;
-    if (!Number.isSafeInteger(offset) || offset < 0 || offset > info.size || (!partial && offset)) throw new ConsoleError("读取位置无效");
+    if (!Number.isSafeInteger(offset) || offset < 0 || offset > info.size || (!partial && offset)) throw new ConsoleError("Invalid read offset");
     let data = await boundedRead(handle, Math.min(partial ? PAGE_BYTES : EDIT_LIMIT + 1, info.size - offset), offset);
-    if (data.includes(0)) throw new ConsoleError("二进制文件不提供文本视图", 415);
+    if (data.includes(0)) throw new ConsoleError("Binary files have no text view", 415);
     if (partial && offset + data.length < info.size) {
       const newline = data.lastIndexOf(10);
       if (newline >= 0) data = data.subarray(0, newline + 1);
@@ -88,7 +88,7 @@ export async function readText(store: Store, root: string, path: string, offset 
     }
     let content: string;
     try { content = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(data); }
-    catch { throw new ConsoleError("文件不是 UTF-8 文本", 415); }
+    catch { throw new ConsoleError("File is not UTF-8 text", 415); }
     return {
       path, content, version: partial ? null : versionOf(data), partial, size: info.size, offset,
       nextOffset: offset + data.length < info.size ? offset + data.length : null,
@@ -97,23 +97,23 @@ export async function readText(store: Store, root: string, path: string, offset 
 }
 const saving = new Map<string, Promise<unknown>>();
 export async function saveText(store: Store, body: { root: string; path: string; version: string; content: string }) {
-  if (typeof body.content !== "string" || Buffer.byteLength(body.content) > EDIT_LIMIT) throw new ConsoleError("编辑文件最大 2 MiB", 413);
+  if (typeof body.content !== "string" || Buffer.byteLength(body.content) > EDIT_LIMIT) throw new ConsoleError("Editable files are limited to 2 MiB", 413);
   const actual = await projectPath(store, body.root, body.path);
   const previous = saving.get(actual) || Promise.resolve();
   const next = previous.catch(() => {}).then(async () => {
     const handle = await open(actual, "r+");
     try {
       const info = await handle.stat();
-      if (!info.isFile() || info.size > EDIT_LIMIT) throw new ConsoleError("文件不可编辑", 413);
+      if (!info.isFile() || info.size > EDIT_LIMIT) throw new ConsoleError("File is not editable", 413);
       const before = await boundedRead(handle, info.size + 1, 0);
-      if (before.length !== info.size) throw new ConsoleError("磁盘文件已变化；草稿保留，请重新载入", 409);
-      if (versionOf(before) !== body.version) throw new ConsoleError("磁盘文件已变化；草稿保留，请重新载入或确认覆盖", 409);
+      if (before.length !== info.size) throw new ConsoleError("The file changed on disk; the draft is kept. Reload before saving.", 409);
+      if (versionOf(before) !== body.version) throw new ConsoleError("The file changed on disk; the draft is kept. Reload or confirm overwrite.", 409);
       const content = Buffer.from(body.content);
       // The descriptor keeps a replaced path from redirecting the write to a new symlink.
       let written = 0;
       while (written < content.length) {
         const { bytesWritten } = await handle.write(content, written, content.length - written, written);
-        if (!bytesWritten) throw new ConsoleError("文件写入未完成", 500);
+        if (!bytesWritten) throw new ConsoleError("The file write did not complete", 500);
         written += bytesWritten;
       }
       await handle.truncate(content.length);

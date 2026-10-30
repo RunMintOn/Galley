@@ -57,11 +57,11 @@ test("commit details return every diff without launching Git per file", async ()
     const edgeHash = git("rev-parse", "HEAD"), edge = await query(edgeHash);
     const files = new Map<string, any>(edge.files.map((file: { path: string }) => [file.path, file]));
     assert.equal(files.get(unusual).status, "Modified");
-    assert.equal(files.get(unusual).notice, "原路径：0.txt");
+    assert.equal(files.get(unusual).notice, "Original path: 0.txt");
     assert.deepEqual(files.get(unusual).diff.blocks, []);
     assert.deepEqual([files.get("1.txt").status, files.get("1.txt").deleted], ["Deleted", 1]);
     for (const path of ["binary.bin", "invalid.txt", "large.txt"]) assert.equal(files.get(path).status, "Unavailable");
-    assert.match(files.get("binary.bin").notice, /二进制/);
+    assert.match(files.get("binary.bin").notice, /Binary/);
     assert.match(files.get("invalid.txt").notice, /UTF-8/);
     assert.match(files.get("large.txt").notice, /2 MiB/);
     assert.deepEqual([files.get("empty.txt").status, files.get("empty.txt").diff.blocks], ["Added", []]);

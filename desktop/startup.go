@@ -24,7 +24,7 @@ func startupError(failure *startupFailure) {
 			result, _ := mygo.Dialog.Message(mygo.MessageOptions{
 				Type: mygo.MessageError, Title: "Review Console",
 				Message: failure.message, Detail: failure.detail,
-				Buttons: []string{"退出", "复制信息并退出"},
+				Buttons: []string{"Quit", "Copy Details and Quit"},
 			})
 			if result.Button == 1 {
 				mygo.Clipboard.WriteText(failure.Error())

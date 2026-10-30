@@ -1,8 +1,38 @@
 <!doctype html>
-<html lang="zh-CN" class="dark">
+<html lang="en" class="dark">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Markdown · Review Console</title><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/scratch.css"></head>
 <body>
-<header id="scratch-toolbar"><strong>Markdown</strong><button id="new-doc" title="新建 Markdown（⌘T）">＋ Markdown</button><button id="new-diff">＋ Diff</button><button id="open-doc" title="打开（⌘O）">打开</button><button id="save-doc" title="保存（⌘S）" disabled>保存</button><button id="reload-doc">重新载入</button><button id="tabs-layout" aria-pressed="false">纵向标签</button><span class="grow"></span><label class="preview-preference"><input type="checkbox" id="default-preview">默认预览</label><span class="pick"><select id="font" aria-label="正文字体" title="正文字体"></select></span><button id="theme" aria-label="切换深浅主题"></button><span class="pick"><select id="paper" aria-label="Paper colour"></select></span></header>
-<main id="scratch-shell"><nav id="scratch-tabs" aria-label="临时标签页"></nav><section id="scratch-work"></section></main>
+<svg id="sprite" aria-hidden="true">
+  <symbol id="i-more" viewBox="0 0 16 16"><circle cx="3.4" cy="8" r="1.15" fill="currentColor" stroke="none"/><circle cx="8" cy="8" r="1.15" fill="currentColor" stroke="none"/><circle cx="12.6" cy="8" r="1.15" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 16 16"><path d="M8 3.4v9.2M3.4 8h9.2"/></symbol>
+  <symbol id="i-sliders" viewBox="0 0 16 16"><path d="M2.6 5.2h10.8M2.6 10.8h10.8"/><circle cx="6.1" cy="5.2" r="1.5"/><circle cx="9.9" cy="10.8" r="1.5"/></symbol>
+  <symbol id="i-external" viewBox="0 0 16 16"><path d="M9.6 2.8h3.7v3.7"/><path d="M13.3 2.8 7.7 8.4"/><path d="M11.7 9.4v2.3a1.5 1.5 0 0 1-1.5 1.5H4a1.5 1.5 0 0 1-1.5-1.5V5.6A1.5 1.5 0 0 1 4 4.1h2.4"/></symbol>
+  <symbol id="i-chevron" viewBox="0 0 16 16"><path d="m6.2 3.8 4.2 4.2-4.2 4.2"/></symbol>
+  <symbol id="i-chevron-down" viewBox="0 0 16 16"><path d="m3.8 6.2 4.2 4.2 4.2-4.2"/></symbol>
+  <symbol id="i-close" viewBox="0 0 16 16"><path d="m4.6 4.6 6.8 6.8M11.4 4.6l-6.8 6.8"/></symbol>
+</svg>
+<header id="scratch-toolbar">
+  <strong>Markdown</strong>
+  <button id="new-doc" title="New Markdown (⌘T)"><svg class="icon"><use href="#i-plus"/></svg>Markdown</button>
+  <button id="new-diff" title="New temporary diff"><svg class="icon"><use href="#i-plus"/></svg>Diff</button>
+  <button id="open-doc" title="Open (⌘O)">Open</button>
+  <button id="save-doc" title="Save (⌘S)" disabled>Save</button>
+  <button id="reload-doc">Reload</button>
+  <button id="tabs-layout" aria-pressed="false">Vertical tabs</button>
+  <span class="grow"></span>
+  <details class="menu settings" id="settings-menu">
+    <summary class="icon-btn" aria-label="View settings" title="View settings"><svg class="icon"><use href="#i-sliders"/></svg></summary>
+    <div class="menu-items popover">
+      <div class="pop-head">View settings</div>
+      <div class="setting"><div class="label">THEME</div><div class="segmented block" data-setting="theme"><button data-value="dark">Dark</button><button data-value="light">Light</button></div></div>
+      <div class="setting"><div class="label">PAPER</div><div class="segmented block" data-setting="paper"><button data-value="charcoal">Charcoal</button><button data-value="ivory">Ivory</button></div></div>
+      <div class="setting"><div class="label">PROSE</div><div class="segmented block" data-setting="font"><button data-value="system">System</button><button data-value="serif">Serif</button><button data-value="mono">Mono</button></div></div>
+      <label class="check"><input type="checkbox" id="default-preview"><span class="box"></span>Open Markdown in preview</label>
+      <div class="pop-foot">Applies to both windows.</div>
+    </div>
+  </details>
+</header>
+<main id="scratch-shell"><nav id="scratch-tabs" aria-label="Temporary tabs"></nav><section id="scratch-work"></section></main>
 <footer id="scratch-status" role="status"></footer>
-<script type="module" src="/scratch.js"></script></body></html>
+<script type="module" src="/scratch.js"></script></body>
+</html>

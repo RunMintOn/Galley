@@ -97,7 +97,7 @@ export function createFileEditor(parent, file, onSave, onChange, onPasteImages) 
             event.preventDefault(); onPasteImages(images, text => view.dispatch(view.state.replaceSelection(text))); return true;
           },
         }),
-        EditorView.contentAttributes.of({ "aria-label": "文件内容", tabindex: "0" }),
+        EditorView.contentAttributes.of({ "aria-label": "File content", tabindex: "0" }),
         keymap.of([{ key: "Mod-s", run: () => { onSave(); return true; } }, ...defaultKeymap, ...historyKeymap]),
         EditorView.updateListener.of(update => { if (update.docChanged) onChange(); }),
         editorTheme,

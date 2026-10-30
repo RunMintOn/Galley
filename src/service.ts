@@ -22,8 +22,8 @@ async function existing(directory: string): Promise<Service | undefined> {
       if (health.app !== "pi-review-console") return;
       if (health.build !== BUILD) {
         const command = `REVIEW_CONSOLE_STATE=${shellQuote(resolve(directory))} ${shellQuote(process.execPath)} ${shellQuote(fileURLToPath(new URL("./cli.mjs", import.meta.url)))} stop`;
-        const error = new Error("审查台服务来自旧构建。\n请先保存草稿并正常退出审查台，再在终端执行：\n" + command +
-          "\n\n随后重新打开审查台，并在活跃 pi 会话中运行 /reload。\n此操作会短暂中断审查台连接，但不终止 pi Agent，也不删除项目和轮次数据。");
+        const error = new Error("The Review Console service is from an older build.\nSave your drafts and quit Review Console normally, then run in a terminal:\n" + command +
+          "\n\nReopen Review Console and run /reload in active pi sessions.\nThis briefly disconnects the console but does not stop the pi Agent or delete project and round data.");
         error.name = "ServiceVersionError"; throw error;
       }
       return service;
@@ -43,7 +43,7 @@ export async function ensureService(directory = stateDirectory()): Promise<Servi
       if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
       const service = await existing(directory);
       if (service) return service;
-      if (attempt === 119) throw new Error("本地服务启动锁超时，请稍后重试");
+      if (attempt === 119) throw new Error("Timed out waiting for the local service lock. Try again shortly.");
       if (Date.now() - (await stat(lock).catch(() => ({ mtimeMs: Date.now() }))).mtimeMs > 30000) {
         await rm(lock, { recursive: true, force: true });
       }
@@ -66,6 +66,6 @@ export async function ensureService(directory = stateDirectory()): Promise<Servi
       if (ready) return ready;
       await sleep(100);
     }
-    throw new Error("本地服务未启动，请运行 npm start 检查构建");
+    throw new Error("The local service is not running. Run npm start to check the build.");
   } finally { await rm(lock, { recursive: true, force: true }); }
 }

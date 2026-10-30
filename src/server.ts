@@ -26,11 +26,11 @@ export async function jsonBody(request: IncomingMessage) {
   let size = 0;
   for await (const chunk of request) {
     size += chunk.length;
-    if (size > 40 * 1024 * 1024) throw new ConsoleError("请求过大", 413);
+    if (size > 40 * 1024 * 1024) throw new ConsoleError("Request too large", 413);
     chunks.push(chunk);
   }
   try { return JSON.parse(Buffer.concat(chunks).toString("utf8")); }
-  catch { throw new ConsoleError("JSON 无效"); }
+  catch { throw new ConsoleError("Invalid JSON"); }
 }
 export function json(response: ServerResponse, body: unknown, status = 200) {
   response.writeHead(status, { "Content-Type": "application/json; charset=utf-8" }).end(JSON.stringify(body));
@@ -67,14 +67,14 @@ export async function startConsole(options: { directory: string; port?: number; 
     if (!input.bridge) return;
     const target = new URL(input.bridge.origin);
     if (target.protocol !== "http:" || target.hostname !== "127.0.0.1" || !target.port || target.origin !== input.bridge.origin) {
-      throw new ConsoleError("无效会话桥接地址");
+      throw new ConsoleError("Invalid session bridge address");
     }
     const bridge = { ...input.bridge, controller: new AbortController() };
     bridges.set(session.id, bridge);
     void (async () => {
       try {
         const response = await fetch(bridge.origin + "/events", { headers: { Authorization: `Bearer ${bridge.token}` }, signal: bridge.controller.signal });
-        if (!response.ok || !response.body) throw new Error("会话连接失败");
+        if (!response.ok || !response.body) throw new Error("Session connection failed");
         let pending = "";
         for await (const chunk of response.body.pipeThrough(new TextDecoderStream())) {
           pending += chunk;
@@ -111,7 +111,7 @@ export async function startConsole(options: { directory: string; port?: number; 
       const url = new URL(request.url || "/", origin);
       if (url.pathname === "/health") { json(response, { app: APP, protocol: PROTOCOL, build: BUILD }); return; }
       if (url.pathname.startsWith("/api/")) {
-        if (!same(bearerToken(request), token)) throw new ConsoleError("未认证", 403);
+        if (!same(bearerToken(request), token)) throw new ConsoleError("Unauthorized", 403);
         if (url.pathname === "/api/auth" && request.method === "POST") {
           response.setHeader("Set-Cookie", `review=${token}; HttpOnly; SameSite=Strict; Path=/`);
           json(response, {}); return;
@@ -160,7 +160,7 @@ export async function startConsole(options: { directory: string; port?: number; 
           const body = await jsonBody(request);
           if (!Array.isArray(body.roots) || body.roots.length !== store.projects.length ||
             new Set(body.roots).size !== store.projects.length ||
-            body.roots.some((root: string) => !store.projects.some(p => p.root === root))) throw new ConsoleError("项目顺序无效");
+            body.roots.some((root: string) => !store.projects.some(p => p.root === root))) throw new ConsoleError("Invalid project order");
           store.projects = body.roots.map((root: string) => store.projects.find(p => p.root === root)!);
           await store.persist(); notify("state"); json(response, {}); return;
         }
@@ -189,7 +189,7 @@ export async function startConsole(options: { directory: string; port?: number; 
           const body = await jsonBody(request);
           store.session(body.sessionId);
           const bridge = bridges.get(body.sessionId);
-          if (!bridge) throw new ConsoleError("会话离线；草稿已保留", 503);
+          if (!bridge) throw new ConsoleError("Session offline; draft kept", 503);
           const result = await fetch(bridge.origin + "/input", {
             method: "POST", headers: { Authorization: `Bearer ${bridge.token}`, "Content-Type": "application/json" },
             body: JSON.stringify({ text: body.text }), signal: AbortSignal.timeout(18000),
@@ -202,7 +202,7 @@ export async function startConsole(options: { directory: string; port?: number; 
           const session = store.session(body.sessionId);
           notify("focus", { root: session.root, sessionId: session.id }); json(response, {}); return;
         }
-        throw new ConsoleError("接口不存在", 404);
+        throw new ConsoleError("Endpoint not found", 404);
       }
       if (request.method !== "GET") throw new ConsoleError("Method not allowed", 405);
       const assets: Record<string, [string, string]> = {

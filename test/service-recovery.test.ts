@@ -48,8 +48,8 @@ test("an installed app offers a source-independent command that stops only the o
       cwd: elsewhere, env: { ...process.env, REVIEW_CONSOLE_STATE: state },
     }), (error: Error & { stderr?: string }) => {
       message = error.stderr || "";
-      assert.match(message, /服务来自旧构建/);
-      assert.match(message, /保存草稿/);
+      assert.match(message, /older build/);
+      assert.match(message, /Save your drafts/);
       assert.doesNotMatch(message, /npm run|at .*\.mjs:\d/);
       return true;
     });

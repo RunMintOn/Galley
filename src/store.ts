@@ -34,9 +34,9 @@ export class Store {
     await write;
   }
   async addProject(path: string) {
-    if (typeof path !== "string" || !path) throw new ConsoleError("请输入本地目录");
+    if (typeof path !== "string" || !path) throw new ConsoleError("Enter a local directory");
     const root = await realpath(path);
-    if (!(await stat(root)).isDirectory()) throw new ConsoleError("不是目录");
+    if (!(await stat(root)).isDirectory()) throw new ConsoleError("Not a directory");
     if (!this.projects.some(p => p.root === root)) {
       this.projects.push({ root, name: root.split("/").at(-1) || root });
       await this.persist();
@@ -45,14 +45,14 @@ export class Store {
   }
   session(id: string) {
     const session = this.sessions.find(s => s.id === id);
-    if (!session || !this.projects.some(p => p.root === session.root)) throw new ConsoleError("会话不可用", 404);
+    if (!session || !this.projects.some(p => p.root === session.root)) throw new ConsoleError("Session unavailable", 404);
     return session;
   }
   async register(input: Registration) {
-    if (!input || typeof input.sessionId !== "string" || !input.sessionId) throw new ConsoleError("缺少会话身份");
+    if (!input || typeof input.sessionId !== "string" || !input.sessionId) throw new ConsoleError("Missing session identity");
     const root = await this.addProject(input.cwd);
     let session = this.sessions.find(s => s.id === input.sessionId);
-    if (session && session.root !== root) throw new ConsoleError("会话与项目不匹配", 409);
+    if (session && session.root !== root) throw new ConsoleError("Session and project do not match", 409);
     if (!session) {
       session = { id: input.sessionId, root, title: input.title || input.sessionId.slice(0, 8), rounds: [], state: "offline" };
       this.sessions.push(session);
@@ -64,9 +64,9 @@ export class Store {
   }
   async saveRound(round: Round) {
     const session = this.session(round.sessionId);
-    if (!round.id || typeof round.id !== "string") throw new ConsoleError("缺少轮次身份");
-    if (!["completed", "aborted", "error"].includes(round.outcome)) throw new ConsoleError("未知结束状态");
-    if (round.report && await realpath(round.report.cwd) !== session.root) throw new ConsoleError("报告与项目不匹配");
+    if (!round.id || typeof round.id !== "string") throw new ConsoleError("Missing round identity");
+    if (!["completed", "aborted", "error"].includes(round.outcome)) throw new ConsoleError("Unknown outcome");
+    if (round.report && await realpath(round.report.cwd) !== session.root) throw new ConsoleError("Report and project do not match");
     const path = this.roundPath(round.sessionId, round.id);
     try {
       await writeFile(path, JSON.stringify(round), { flag: "wx", mode: 0o600 });
@@ -81,7 +81,7 @@ export class Store {
   }
   async round(sessionId: string, id: string): Promise<Round> {
     const session = this.session(sessionId);
-    if (!session.rounds.some(r => r.id === id)) throw new ConsoleError("本轮没有可读取的报告", 404);
+    if (!session.rounds.some(r => r.id === id)) throw new ConsoleError("No readable report for this round", 404);
     return JSON.parse(await readFile(this.roundPath(sessionId, id), "utf8"));
   }
   private roundPath(session: string, id: string) {
