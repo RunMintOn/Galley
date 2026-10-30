@@ -126,8 +126,8 @@ select { min-width: 0; border: 1px solid var(--border); border-radius: 4px; padd
 .booting #console { display: none; }
 .pane { min-width: 0; min-height: 0; display: flex; flex-direction: column; position: relative; }
 .pane > header {
-  min-height: var(--head-h); height: var(--head-h); padding: 0 12px;
-  display: flex; align-items: center; gap: 6px;
+  min-height: var(--head-h); height: var(--head-h); padding: 0 10px 0 12px;
+  display: flex; align-items: center; gap: 7px;
   border-bottom: 1px solid var(--border); flex: none;
 }
 .pane > header strong, .tree-heading {
@@ -135,7 +135,8 @@ select { min-width: 0; border: 1px solid var(--border); border-radius: 4px; padd
   color: var(--muted); white-space: nowrap;
 }
 .pane-title { margin: 0; font: 500 10px/1.4 var(--ui); letter-spacing: .09em; text-transform: uppercase; color: var(--muted); }
-.pane > header strong span { margin-left: 4px; color: var(--subtle); font: 400 10px/1.4 var(--mono); letter-spacing: 0; }
+.pane > header strong { display: inline-flex; align-items: baseline; gap: 6px; }
+.pane > header strong span { color: var(--subtle); font: 400 10px/1.4 var(--mono); letter-spacing: 0; }
 .pane-body { overflow: auto; flex: 1; min-height: 0; scrollbar-width: thin; }
 .pane > footer {
   min-height: var(--foot-h); height: var(--foot-h); display: flex; align-items: center; gap: 8px;
@@ -178,7 +179,7 @@ select { min-width: 0; border: 1px solid var(--border); border-radius: 4px; padd
   position: relative; display: grid;
   grid-template-columns: 10px minmax(0,1fr) auto; grid-template-rows: 18px 13px;
   column-gap: 6px; row-gap: 2px; align-content: center;
-  width: 100%; height: 48px; min-height: 48px; padding: 0 12px;
+  width: 100%; height: 48px; min-height: 48px; padding: 0 10px 0 12px;
   border-radius: 0; text-align: left; color: var(--muted);
 }
 .project:hover { background: var(--hover); }
@@ -251,8 +252,8 @@ select { min-width: 0; border: 1px solid var(--border); border-radius: 4px; padd
 .files-pane > header > .text-toggle { margin-left: 2px; }
 .file-button {
   position: relative; display: flex; align-items: center; gap: 7px;
-  width: 100%; min-height: 28px; padding: 0 12px; border-radius: 0;
-  text-align: left; color: var(--muted); font: 12.5px/1.5 var(--ui);
+  width: 100%; min-height: 28px; padding: 0 10px 0 12px; border-radius: 0;
+  text-align: left; color: var(--muted); font: 12.5px/1.45 var(--ui);
 }
 .file-button:hover { background: var(--hover); }
 .file-button[aria-current=true] { background: var(--selected); color: var(--ink); }
@@ -278,13 +279,17 @@ select { min-width: 0; border: 1px solid var(--border); border-radius: 4px; padd
 }
 .tree-dir > summary {
   list-style: none; display: flex; align-items: center; gap: 6px;
-  min-height: 26px; padding: 0 12px; color: var(--muted); font: 12.5px/1.5 var(--ui);
+  min-height: 26px; padding: 0 10px 0 12px; color: var(--muted); font: 12.5px/1.5 var(--ui);
 }
 .tree-dir > summary::-webkit-details-marker { display: none; }
 .tree-dir > summary .icon { width: 12px; height: 12px; stroke-width: 1.5; color: var(--subtle); transition: transform .12s ease; }
 .tree-dir[open] > summary .icon { transform: rotate(90deg); }
-.tree-dir > div { padding-left: 14px; }
-#tree .tree-dir > div { margin-left: 15px; padding-left: 0; border-left: 1px solid var(--border); }
+.tree-dir > div { padding-left: 0; }
+/* Both trees indent by depth instead of nested offsets or guide rails: rows
+   follow the mockup's 28px base and 14px per level. */
+#tree .tree-dir > div { margin-left: 0; padding-left: 0; border-left: 0; }
+#tree .tree-dir > summary, #changed .tree-dir > summary { padding-left: calc(10px + var(--depth, 0) * 14px); }
+#tree .file-button, #changed.tree-mode .file-button { padding-left: calc(28px + var(--depth, 0) * 14px); }
 .files-pane > .files-footer { height: var(--foot-h); min-height: var(--foot-h); padding: 0 8px; gap: 4px; }
 #open-scratch {
   display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 4px;
@@ -300,10 +305,10 @@ select { min-width: 0; border: 1px solid var(--border); border-radius: 4px; padd
 /* ── content ──────────────────────────────────────────────────────────── */
 
 .content-header {
-  height: var(--head-h); min-height: var(--head-h); padding: 0 12px; gap: 8px;
+  height: var(--head-h); min-height: var(--head-h); padding: 0 10px 0 12px; gap: 7px;
   display: flex; align-items: center; border-bottom: 1px solid var(--border); flex: none;
 }
-#content-name { flex: 1; min-width: 0; display: flex; align-items: baseline; overflow: hidden; white-space: nowrap; font-size: 12.5px; color: var(--ink); }
+#content-name { flex: 0 1 auto; min-width: 0; display: flex; align-items: baseline; overflow: hidden; white-space: nowrap; font-size: 12.5px; color: var(--ink); }
 #content-name .dir { flex: none; color: var(--subtle); }
 #content-name .base { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #content-counts { flex: none; }
@@ -323,7 +328,7 @@ select { min-width: 0; border: 1px solid var(--border); border-radius: 4px; padd
 .doc-toolbar > .icon-btn { margin-left: auto; }
 #content { background: var(--sheet); }
 #content:has(.file-view) { overflow: hidden; }
-.content-pane > footer { display: flex; align-items: center; gap: 10px; }
+.content-pane > footer { display: flex; align-items: center; gap: 8px; }
 #content-footer-actions { margin-left: auto; display: flex; gap: 10px; align-items: center; }
 #content-footer-actions .hint { font: 10px/1.4 var(--mono); color: var(--subtle); }
 #source-view { display: flex; background: var(--panel); }
@@ -368,17 +373,17 @@ html:not(.dark) .diff-surface { --ink: #1a1a1a; --add-bg: var(--diff-add-bg); --
 .round-diff .file-head { display: none; }
 .diff-surface .hunk {
   height: 24px; min-height: 24px; display: flex; align-items: center; gap: 10px;
-  padding: 0 12px; background: var(--panel); border-bottom: 1px solid var(--border);
+  padding: 0 12px; background: var(--panel); border-bottom: 1px solid var(--border); border-left: 0;
   font: 10px/1 var(--mono); color: var(--subtle);
 }
 .diff-surface .hunk .h { color: var(--muted); }
 .diff-surface .hunk .count { margin-left: auto; }
 .diff-surface .diff { font: 12px/21px var(--mono); border-collapse: collapse; table-layout: fixed; width: 100%; }
 .diff-surface .diff td { min-height: 21px; padding-block: 0; vertical-align: top; border: 0; }
-.diff-surface .diff .ln { width: 34px; min-width: 34px; color: var(--subtle); padding-inline: 5px; background: transparent; text-align: right; user-select: none; }
-.diff-surface .diff .sign { width: 18px; padding-inline: 4px; text-align: center; }
-.diff-surface .diff .gutter { width: 4px; padding: 0; }
-.diff-surface .diff .content { padding: 0 8px; color: var(--muted); overflow-wrap: anywhere; }
+.diff-surface .diff .ln { width: 30px; min-width: 30px; color: var(--subtle); padding: 0 6px 0 0; font: 12px/21px var(--mono); background: transparent; text-align: right; user-select: none; }
+.diff-surface .diff .sign { width: 16px; padding: 0; font: 12px/21px var(--mono); text-align: center; }
+.diff-surface .diff .gutter { width: 1px; padding: 0; }
+.diff-surface .diff .content { padding: 0 8px; font: 12px/21px var(--mono); color: var(--muted); overflow-wrap: anywhere; }
 .diff-surface .diff .delete { background: var(--del-bg); }
 .diff-surface .diff .insert { background: var(--add-bg); }
 .diff-surface .diff tr.delete td.content, .diff-surface .diff td.content.delete { color: var(--del-ink); }
@@ -397,7 +402,7 @@ html:not(.dark) .diff-surface { --ink: #1a1a1a; --add-bg: var(--diff-add-bg); --
 .diff-surface .diffs:not(.nowrap) .content { white-space: pre-wrap; }
 .diff-surface .diffs.nowrap .content { white-space: pre; }
 .diff-surface .diffs.nowrap .diff { width: max-content; min-width: 100%; table-layout: auto; }
-.diff-surface [data-layout=split] .content { width: calc((100% - 72px) / 2); }
+.diff-surface [data-layout=split] .content { width: calc((100% - 61px) / 2); }
 .diff-surface .fold td { color: var(--subtle); background: var(--panel); }
 .hunk-gap { padding: 8px 12px; color: var(--subtle); font: 11px/1.5 var(--ui); border-bottom: 1px solid var(--border); }
 
@@ -511,7 +516,7 @@ html.dark .reply-pane:not([data-paper=ivory]) {
 html.dark .reply-pane[data-paper=ivory] { --paper: #f8f8f6; }
 .reply-pane > .canvas { flex: 1; min-height: 0; overflow: auto; }
 .reply-pane > .reply-header {
-  height: var(--head-h); min-height: var(--head-h); gap: 8px;
+  height: var(--head-h); min-height: var(--head-h); gap: 7px;
   padding: 0 10px 0 14px; border-bottom: 1px solid var(--hair);
 }
 .reply-pane .reply-header .pane-title { color: var(--ink-2); flex: none; }
@@ -536,7 +541,7 @@ html.dark .reply-pane[data-paper=ivory] { --paper: #f8f8f6; }
 }
 .reply-pane .pick { height: 24px; padding: 0 6px; border-radius: var(--r-control); color: var(--ink-2); font: 11px/1.4 var(--mono); white-space: nowrap; }
 .reply-pane .pick:hover { background: color-mix(in oklab, var(--ink) 8%, transparent); color: var(--ink); }
-.reply-pane .pick > select { padding: 0 13px 0 2px; font: inherit; color: inherit; text-overflow: ellipsis; }
+.reply-pane .pick > select { padding: 0 13px 0 2px; height: 100%; font: inherit; color: inherit; text-overflow: ellipsis; }
 .reply-pane .session-pick { max-width: 26ch; flex: 0 0 auto; width: max-content; }
 .reply-pane .session-pick > select { width: 100%; }
 .reply-pane .reply-pagination { display: inline-flex; align-items: center; gap: 1px; flex: none; }

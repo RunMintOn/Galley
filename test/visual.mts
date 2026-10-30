@@ -104,6 +104,16 @@ try {
   assert.equal(await page.locator("#round-time").count(), 0, "轮次时间只在 Round request 里出现");
   assert.equal(await page.locator("#changed-layout").evaluate(el => el.closest("header")?.classList.contains("pane-heading")), true, "Tree/Flat 在 CHANGED 栏头");
   assert.equal(await page.locator(".files-footer .pane-toggle").count(), 1, "files 栏折叠在底栏");
+  const indent = async selector => page.locator(selector).evaluateAll(nodes =>
+    nodes.map(node => ({ path: node.dataset.path, left: Math.round(parseFloat(getComputedStyle(node).paddingLeft)) })));
+  const treeRows = await indent("#tree .file-button");
+  const topLevel = treeRows.find(row => row.path === "go.mod"), nested = treeRows.find(row => row.path === "src/app.go");
+  assert.equal(nested.left - topLevel.left, 14, "文件树每层缩进 14px");
+  assert.equal(await page.locator("#tree .tree-dir > div").first().evaluate(node => getComputedStyle(node).borderLeftWidth), "0px", "文件树不画竖线");
+  await page.locator("#changed-layout").click();
+  const changedRows = await indent("#changed .file-button");
+  assert.equal(changedRows.find(row => row.path === "src/diffview.go").left - changedRows.find(row => row.path === "notes.unknown").left, 14, "改动树使用同一套层级缩进");
+  await page.locator("#changed-layout").click();
   await page.locator('#changed .file-button[data-path="notes.unknown"]').click();
   await page.waitForFunction(() => document.querySelector("#content-name")?.textContent === "notes.unknown");
   assert.equal(await page.locator(".diff-surface .tk-k").count(), 0, "未知扩展名保持单色");

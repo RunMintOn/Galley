@@ -114,25 +114,6 @@ header {
   white-space: nowrap;
   flex-shrink: 0;
 }
-header strong {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-family: var(--mono);
-  font-size: 11px;
-  font-weight: 400;
-  letter-spacing: 0;
-  color: var(--ink);
-}
-header strong::before {
-  content: "";
-  width: 7px;
-  height: 7px;
-  flex: none;
-  border-radius: 0.5px;
-  background: var(--ink);
-}
-header span { margin-left: 12px; color: var(--ink-2); }
 header nav { display: flex; gap: 18px; flex-shrink: 0; }
 .brand { display: flex; align-items: center; min-width: 0; }
 #reply-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -430,12 +411,12 @@ footer {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 4px;
   margin: 14px 0 0;
   font-family: var(--mono);
-  font-size: 11px;
-  line-height: 1;
-  color: var(--ink-2);
+  font-size: 10px;
+  line-height: 14px;
+  color: var(--ink-3);
 }
 .docmeta > span {
   display: inline-flex;
@@ -446,10 +427,10 @@ footer {
 .docmeta > .rule {
   display: block;
   flex: none;
-  width: 1px;
-  height: 11px;
-  background: var(--hair-2);
+  color: var(--ink-3);
+  opacity: .7;
 }
+.docmeta > .rule::before { content: "·"; }
 .docmeta > .failed { color: var(--danger); }
 .docmeta .swatch {
   /* Type carries ~1.5px of side bearing at this size; without the offset the
@@ -462,6 +443,9 @@ footer {
   background: var(--signal);
   transition: background-color 160ms ease;
 }
+/* The swatch doubles as the render indicator, so it only appears while
+   rendering or after a failure; the finished summary reads as plain text. */
+.docmeta[data-state="done"] .swatch { display: none; }
 /* The swatch doubles as the render indicator. */
 .docmeta[data-state="rendering"] .swatch {
   animation: swatch-pulse 1100ms ease-in-out infinite;
@@ -495,7 +479,7 @@ footer {
 .markdown-body > :first-child { margin-top: 0; }
 .markdown-body h1 {
   font-size: 34px;
-  line-height: 1.13;
+  line-height: 1.2;
   font-weight: 700;
   letter-spacing: -0.022em;
   color: var(--heading-1);

@@ -317,9 +317,10 @@ async function loadRound() {
 }
 function renderChanged() {
   const list = $("changed"); list.replaceChildren();
+  list.classList.toggle("tree-mode", changedTree);
   const directories = new Map([["", list]]);
   for (const file of state.data?.report?.files || []) {
-    let parent = list;
+    let parent = list, depth = 0;
     if (changedTree) {
       let prefix = "";
       for (const part of file.path.split("/").slice(0, -1)) {
@@ -327,14 +328,18 @@ function renderChanged() {
         if (!directories.has(prefix)) {
           const folder = document.createElement("details"); folder.className = "tree-dir"; folder.open = true;
           const title = document.createElement("summary");
+          title.style.setProperty("--depth", String(depth));
           title.innerHTML = '<svg class="icon"><use href="#i-chevron"/></svg>';
           const label = document.createElement("span"); label.textContent = part + "/"; title.append(label);
           const children = document.createElement("div"); folder.append(title, children); parent.append(folder); directories.set(prefix, children);
         }
         parent = directories.get(prefix);
+        depth += 1;
       }
     }
-    parent.append(fileButton(file.path, () => showDiff(file), file));
+    const row = fileButton(file.path, () => showDiff(file), file);
+    if (changedTree) row.style.setProperty("--depth", String(depth));
+    parent.append(row);
   }
   selectFile(state.file);
 }
@@ -479,7 +484,7 @@ async function loadTree() {
   const root = state.root;
   $("tree").replaceChildren(); treeHeading();
   if (!root) return;
-  const load = async (path, parent) => {
+  const load = async (path, parent, depth = 0) => {
     const data = await api(`tree?root=${encodeURIComponent(root)}&path=${encodeURIComponent(path)}`);
     if (root !== state.root) return;
     parent.replaceChildren();
@@ -488,11 +493,12 @@ async function loadTree() {
       if (item.directory) {
         const details = document.createElement("details"); details.className = "tree-dir";
         const summary = document.createElement("summary");
+        summary.style.setProperty("--depth", String(depth));
         summary.innerHTML = '<svg class="icon"><use href="#i-chevron"/></svg>';
         const label = document.createElement("span"); label.textContent = item.name; summary.append(label);
         const children = document.createElement("div"); details.append(summary, children);
         details.ontoggle = run(async () => {
-          if (details.open) { expanded.add(file); await load(file, children); }
+          if (details.open) { expanded.add(file); await load(file, children, depth + 1); }
           else {
             for (const entry of expanded) if (entry === file || entry.startsWith(file + "/")) expanded.delete(entry);
             children.replaceChildren();
@@ -503,6 +509,7 @@ async function loadTree() {
         parent.append(details);
       } else {
         const b = fileButton(file, () => openFile(file));
+        b.style.setProperty("--depth", String(depth));
         b.querySelector(".file-name").textContent = item.name + (item.link ? " ↗" : "");
         b.classList.toggle("changed", !!state.data?.report?.files.some(f => f.path === file));
         b.setAttribute("aria-current", String(state.file === file));

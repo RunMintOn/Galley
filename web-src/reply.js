@@ -176,8 +176,12 @@ function render(text) {
     const swatch = document.createElement("span"); swatch.className = "swatch"; swatch.setAttribute("aria-hidden", "true");
     summary.replaceChildren(swatch);
     for (const text of parts) {
-      const rule = document.createElement("span"); rule.className = "rule"; rule.setAttribute("aria-hidden", "true");
-      const item = document.createElement("span"); item.textContent = text; summary.append(rule, item);
+      const item = document.createElement("span"); item.textContent = text;
+      if (summary.childElementCount > 1) {
+        const rule = document.createElement("span"); rule.className = "rule"; rule.setAttribute("aria-hidden", "true");
+        summary.append(rule);
+      }
+      summary.append(item);
     }
     summary.dataset.state = failed.size ? "failed" : "done";
     const h1 = preview.querySelector("h1");
