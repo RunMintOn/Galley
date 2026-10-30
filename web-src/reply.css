@@ -351,6 +351,7 @@ header .pick::before {
 }
 header .pick:hover::before,
 header .pick:focus-within::before { transform: scaleX(1); }
+header .pick:focus-within::before { transition: none; }
 /* A pane toggle is a one-shot action, not a mode, so it keeps no state underline. */
 header .pane-toggle::after { display: none; }
 button:focus-visible,

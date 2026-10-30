@@ -9,7 +9,7 @@ import { Store, ConsoleError } from "./store.ts";
 import type { Registration, Round } from "./model.ts";
 import { bearerToken, hasServiceHost, isCrossOrigin } from "./service-protocol.mjs";
 import { createReplyUrl, parseReplyReference, readReply } from "./session-reply.mjs";
-import { tree, readText, saveText, projectPath, ignored } from "./files.ts";
+import { tree, readText, saveText, readImage, saveImage, projectPath, ignored } from "./files.ts";
 import { gitQuery } from "./git.ts";
 import { BUILD } from "./build.ts";
 
@@ -105,7 +105,7 @@ export async function startConsole(options: { directory: string; port?: number; 
     response.setHeader("X-Content-Type-Options", "nosniff");
     response.setHeader("Referrer-Policy", "no-referrer");
     // function-plot compiles the validated expression grammar; inline scripts remain blocked.
-    response.setHeader("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'none'");
+    response.setHeader("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https: http:; font-src 'self' data:; connect-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'none'");
     if (!hasServiceHost(request, port) || isCrossOrigin(request, origin)) { json(response, { error: "Forbidden" }, 403); return; }
     try {
       const url = new URL(request.url || "/", origin);
@@ -139,6 +139,12 @@ export async function startConsole(options: { directory: string; port?: number; 
         }
         if (url.pathname === "/api/file" && request.method === "PUT") {
           json(response, await saveText(store, await jsonBody(request))); return;
+        }
+        if (url.pathname === "/api/image" && request.method === "GET") {
+          json(response, await readImage(store, url.searchParams.get("root") || "", url.searchParams.get("path") || "")); return;
+        }
+        if (url.pathname === "/api/image" && request.method === "POST") {
+          json(response, await saveImage(store, await jsonBody(request))); return;
         }
         if (url.pathname === "/api/projects" && request.method === "GET") { json(response, { projects: store.projects, sessions: store.sessions }); return; }
         if (url.pathname === "/api/projects" && request.method === "POST") {

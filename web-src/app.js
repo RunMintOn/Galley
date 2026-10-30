@@ -1,8 +1,9 @@
 import { mountDiff } from "./diff.js";
 import { createReplyRenderer } from "./reply.js";
-import { createFileEditor, editHistory } from "./editor.js";
+import { createFileEditor, editHistory, findInEditor } from "./editor.js";
 import { showGitHistory } from "./git-view.js";
-import { setupTheme } from "./theme.js";
+import { setupTheme, setupPreviewPreference, defaultPreview } from "./theme.js";
+import { imageData, projectImage, relativeFilePath } from "./images.js";
 
 const $ = id => document.getElementById(id);
 const params = new URLSearchParams(location.hash.slice(1));
@@ -16,6 +17,7 @@ let diff;
 const positions = new Map();
 let renderTimer;
 let editor, currentFile;
+let fileRenderer, filePreviewTimer;
 let savingFile = false;
 let sourceOpen = false;
 let disposeHistory;
@@ -40,6 +42,7 @@ function leaveFile() {
   if (savingFile) { notice("正在保存，请等待确认后再切换"); return false; }
   if (editor?.dirty && !confirm("存在未保存修改。放弃这些修改并切换？")) return false;
   diff?.destroy(); diff = undefined;
+  clearTimeout(filePreviewTimer); fileRenderer?.destroy(); fileRenderer = undefined;
   editor?.destroy(); editor = undefined; currentFile = undefined; return true;
 }
 function indexMode(git = false) {
@@ -84,7 +87,13 @@ function fileButton(path, action, stats) {
   const basename = path.split("/").at(-1);
   const duplicate = stats && state.data?.report?.files.some(f => f.path !== path && f.path.split("/").at(-1) === basename);
   name.textContent = stats && !duplicate ? basename : path;
-  b.append(name);
+  const icon = document.createElement("span"); icon.className = "file-icon"; icon.setAttribute("aria-hidden", "true");
+  const ext = path.split(".").at(-1).toLowerCase();
+  const types = { md: ["↓", "markdown"], markdown: ["↓", "markdown"], mdx: ["↓", "markdown"], js: ["JS", "javascript"], mjs: ["JS", "javascript"], ts: ["TS", "typescript"], tsx: ["TS", "typescript"], json: ["{}", "json"], css: ["#", "stylesheet"], html: ["‹›", "html"], go: ["go", "go"], py: ["py", "python"], rs: ["rs", "rust"], png: ["▧", "image"], jpg: ["▧", "image"], svg: ["▧", "image"] };
+  const [symbol, type] = types[ext] || ["", "file"];
+  icon.textContent = symbol; icon.dataset.type = type;
+  if (!symbol) icon.innerHTML = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M9 1.5H3.5v13h9v-9L9 1.5Z"/><path d="M9 1.5v4h3.5"/></svg>';
+  b.append(icon, name);
   if (stats) {
     const totals = document.createElement("span"); totals.className = "line-counts";
     totals.append(...counts(stats.added, stats.deleted)); b.append(totals);
@@ -95,6 +104,8 @@ function selectFile(path) {
   document.querySelectorAll("[data-path]").forEach(b => b.setAttribute("aria-current", String(b.dataset.path === path)));
 }
 function contentHeader(name = "", stats) {
+  $("file-preview-options").hidden = true;
+  $("file-preview-options").open = false;
   $("content-name").textContent = name.split("/").at(-1);
   $("content-name").title = name;
   $("content-counts").replaceChildren(...(stats?.status === "Unavailable" ? [document.createTextNode("行数不可用")] : stats ? counts(stats.added, stats.deleted) : []));
@@ -206,8 +217,10 @@ $("add-project").onclick = run(async () => {
 });
 $("add-project-top").onclick = () => $("add-project").click();
 document.addEventListener("click", e => {
-  const menu = $("project-menu");
-  if (!menu.contains(e.target) || e.target.closest("button")) menu.open = false;
+  for (const id of ["project-menu", "file-preview-options"]) {
+    const menu = $(id);
+    if (!menu.contains(e.target) || e.target.closest("button")) menu.open = false;
+  }
 });
 $("remove-project").onclick = run(async () => {
   if (!state.root || !confirm("从审查台移除此项目？不会删除磁盘文件。")) return;
@@ -317,14 +330,14 @@ function showDiff(file, preserveSource = false) {
     warning.textContent = "本轮中断、失败或报告不完整；只显示已捕获部分"; root.prepend(warning);
   }
 }
-async function openFile(path, line = 1, offset = 0) {
+async function openFile(path, line = 1, offset = 0, initialView = defaultPreview() ? "preview" : "source") {
   if (!state.root || !leaveFile()) return;
   setSource(false);
   closeHistory();
   const root = state.root, current = ++generation;
   const file = await api(`file?root=${encodeURIComponent(root)}&path=${encodeURIComponent(path)}&offset=${offset}`);
   if (current !== generation || root !== state.root) return;
-  state.mode = "file"; currentFile = { ...file, root, line };
+  state.mode = "file"; currentFile = { ...file, root, line, view: initialView };
   state.file = path; contentHeader(path); selectFile(path);
   $("content-position").textContent = file.partial ? `字节 ${file.offset} / ${file.size}` : "UTF-8 · 手动保存";
   const holder = document.createElement("div"); holder.className = "file-view";
@@ -333,17 +346,56 @@ async function openFile(path, line = 1, offset = 0) {
   const status = document.createElement("span"); status.className = "file-state";
   const edit = button("编辑 (e)", () => editor?.enable());
   const save = button("保存 ⌘S", saveFile);
-  const reload = button("重新载入", () => openFile(path, line, offset));
+  const reload = button("重新载入", () => openFile(path, line, offset, currentFile.view));
   toolbar.append(edit, save, reload, status);
   if (file.nextOffset !== null) toolbar.append(button("下一段", () => openFile(path, 1, file.nextOffset)));
   if (file.offset) toolbar.append(button("回到文件开头", () => openFile(path)));
   const host = document.createElement("div"); host.className = "editor-host";
-  holder.append(title, toolbar, host); $("content").replaceChildren(holder);
+  const panes = document.createElement("div"); panes.className = "file-panes";
+  panes.append(host);
+  holder.append(title, toolbar, panes); $("content").replaceChildren(holder);
+  const markdown = /\.(md|markdown|mdx)$/i.test(path) && !file.partial;
+  let preview, refreshPreview;
+  if (markdown) {
+    $("file-preview-options").hidden = false;
+    preview = document.createElement("div"); preview.className = "reply-pane file-preview"; preview.dataset.paper = $("reply-pane").dataset.paper;
+    const article = document.createElement("article"); article.className = "markdown-body"; preview.append(article); panes.append(preview);
+    fileRenderer = createReplyRenderer(article, { summary: false, resolveImage: source => projectImage(api, root, path, source) });
+    refreshPreview = () => fileRenderer?.render(editor.text);
+    const views = document.createElement("nav"); views.className = "segmented file-views"; views.setAttribute("aria-label", "Markdown 显示方式");
+    const setView = view => {
+      currentFile.view = view;
+      panes.dataset.view = view;
+      host.hidden = view === "preview"; preview.hidden = view === "source";
+      views.querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.view === view)));
+      if (view !== "source" && editor) refreshPreview();
+    };
+    for (const [view, label] of [["source", "源码"], ["split", "分栏"], ["preview", "预览"]]) {
+      const control = button(label, () => setView(view)); control.dataset.view = view; views.append(control);
+    }
+    toolbar.prepend(views);
+    setView(initialView);
+    article.addEventListener("click", run(async event => {
+      const anchor = event.target.closest("a");
+      const href = anchor?.getAttribute("href");
+      if (!href || /^(https?:|mailto:|#)/i.test(href) || anchor.matches(".footnote-ref a,.footnote-backref")) return;
+      event.preventDefault(); await openFile(relativeFilePath(path, href));
+    }));
+  }
   editor = createFileEditor(host, file, run(saveFile), () => {
     status.textContent = editor?.dirty ? "未保存" : editor?.editable ? "可编辑 · 手动保存" : "只读";
     status.classList.toggle("dirty", !!editor?.dirty);
     save.disabled = !editor?.dirty; edit.disabled = !!file.partial || !!editor?.editable;
-  });
+    clearTimeout(filePreviewTimer);
+    if (refreshPreview) filePreviewTimer = setTimeout(refreshPreview, 150);
+  }, run(async (images, insert) => {
+    for (const image of images) {
+      const data = await imageData(image);
+      const result = await api("image", { root, path, type: image.type, data: data.slice(data.indexOf(",") + 1) });
+      insert(`![图片](${result.source})\n`);
+    }
+  }));
+  refreshPreview?.();
   status.textContent = editor.editable ? "可编辑 · 手动保存" : "只读";
   save.disabled = true; edit.disabled = file.partial || editor.editable;
   editor.goToLine(line);
@@ -381,7 +433,7 @@ async function loadTree() {
       const file = path ? path + "/" + item.name : item.name;
       if (item.directory) {
         const details = document.createElement("details"); details.className = "tree-dir";
-        const summary = document.createElement("summary"); summary.textContent = item.name + "/";
+        const summary = document.createElement("summary"); summary.textContent = item.name;
         const children = document.createElement("div"); details.append(summary, children);
         details.ontoggle = run(async () => {
           if (details.open) { expanded.add(file); await load(file, children); }
@@ -419,7 +471,7 @@ async function recheckFile() {
   const fresh = await api(`file?root=${encodeURIComponent(target.root)}&path=${encodeURIComponent(target.path)}`);
   if (currentFile !== target || fresh.version === target.version) return;
   if (editor?.dirty) notice("磁盘文件已变化；当前草稿保留，保存时需处理冲突");
-  else await openFile(target.path, target.line);
+  else await openFile(target.path, target.line, 0, target.view);
 }
 async function chooseRound(id) {
   if (!leaveFile()) { $("rounds").value = state.round; return; }
@@ -452,6 +504,7 @@ $("reply-source").oninput = () => {
   clearTimeout(renderTimer); renderTimer = setTimeout(() => renderer.render($("reply-source").value), 200);
 };
 setupTheme($("reply-pane"), () => renderer.render($("reply-source").value));
+setupPreviewPreference();
 const panes = ["projects-pane", "files-pane", "content-pane", "reply-pane"];
 const paneNames = { "projects-pane": "项目栏", "files-pane": "文件栏", "content-pane": "内容栏", "reply-pane": "回复栏" };
 const paneSide = { "projects-pane": "left", "files-pane": "left", "content-pane": "left", "reply-pane": "right" };
@@ -465,9 +518,19 @@ function paneIcon(pane, expanded) {
     '<path d="M6.4 6.2 4.4 8l2 1.8"/></svg>';
 }
 function layoutPanes() {
-  const widths = panes.map((id, i) => $(id).classList.contains("collapsed") ? "40px" : ["var(--projects-width,196px)", "var(--files-width,248px)", "minmax(var(--content-min-width,280px),1fr)", "minmax(360px,470px)"][i]);
+  const style = getComputedStyle($("console"));
+  const projects = $("projects-pane").classList.contains("collapsed") ? 40 : parseFloat(style.getPropertyValue("--projects-width")) || 196;
+  const files = $("files-pane").classList.contains("collapsed") ? 40 : parseFloat(style.getPropertyValue("--files-width")) || 248;
+  const available = $("console").clientWidth - projects - files;
+  const minContent = parseFloat(style.getPropertyValue("--content-min-width")) || 280;
+  const width = Math.max(300, Math.min(replyWidth, available - minContent));
+  const widths = panes.map((id, i) => $(id).classList.contains("collapsed") ? "40px" : ["var(--projects-width,196px)", "var(--files-width,248px)", "minmax(var(--content-min-width,280px),1fr)", width + "px"][i]);
   if ($("content-pane").classList.contains("collapsed") && !$("reply-pane").classList.contains("collapsed")) widths[3] = "minmax(360px,1fr)";
   $("console").style.gridTemplateColumns = widths.join(" ");
+  $("reply-resizer").hidden = $("content-pane").classList.contains("collapsed") || $("reply-pane").classList.contains("collapsed");
+  $("reply-resizer").setAttribute("aria-valuenow", String(Math.round(width)));
+  $("reply-resizer").setAttribute("aria-valuemin", "300");
+  $("reply-resizer").setAttribute("aria-valuemax", String(Math.max(300, available - minContent)));
   document.querySelectorAll("[data-collapse]").forEach(control => {
     const open = !$(control.dataset.collapse).classList.contains("collapsed");
     const label = (open ? "收起" : "展开") + paneNames[control.dataset.collapse];
@@ -483,11 +546,39 @@ function setPane(id, collapsed) {
   layoutPanes();
 }
 document.querySelectorAll("[data-collapse]").forEach(b => { b.onclick = () => setPane(b.dataset.collapse, !$(b.dataset.collapse).classList.contains("collapsed")); });
+let replyWidth = Number(localStorage.getItem("review-reply-width")) || 470;
+const resizer = $("reply-resizer");
+resizer.onpointerdown = event => {
+  if (event.button !== 0) return;
+  event.preventDefault(); resizer.setPointerCapture(event.pointerId);
+  document.body.classList.add("resizing");
+};
+resizer.onpointermove = event => {
+  if (!resizer.hasPointerCapture(event.pointerId)) return;
+  const right = $("console").getBoundingClientRect().right;
+  replyWidth = right - event.clientX; layoutPanes();
+};
+resizer.onlostpointercapture = () => {
+  replyWidth = $("reply-pane").getBoundingClientRect().width;
+  localStorage.setItem("review-reply-width", String(replyWidth));
+  document.body.classList.remove("resizing");
+};
+resizer.onpointerup = event => resizer.releasePointerCapture(event.pointerId);
+resizer.ondblclick = () => { replyWidth = 470; localStorage.removeItem("review-reply-width"); layoutPanes(); };
+resizer.onkeydown = event => {
+  if (!["ArrowLeft", "ArrowRight"].includes(event.key)) return;
+  event.preventDefault();
+  replyWidth = $("reply-pane").getBoundingClientRect().width + (event.key === "ArrowLeft" ? 20 : -20);
+  layoutPanes(); localStorage.setItem("review-reply-width", String($("reply-pane").getBoundingClientRect().width));
+};
+new ResizeObserver(layoutPanes).observe($("console"));
 layoutPanes();
 document.addEventListener("keydown", run(async e => {
   if (e.defaultPrevented) return;
   if (window.mygo && (e.metaKey || e.ctrlKey) && ["Enter", "s"].includes(e.key)) return;
-  if (e.key === "Escape" && $("project-menu").open) { e.preventDefault(); $("project-menu").open = false; return; }
+  if (e.key === "Escape" && document.querySelector("details.menu[open]")) {
+    e.preventDefault(); document.querySelectorAll("details.menu[open]").forEach(menu => menu.open = false); return;
+  }
   if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && e.target.id !== "message-input") { e.preventDefault(); toggleSource(); return; }
   const typing = e.target.closest("input,textarea,select,[contenteditable=true]");
   if ((e.metaKey || e.ctrlKey) && e.key === "o" && !typing) { e.preventDefault(); $("add-project").click(); return; }
@@ -585,13 +676,24 @@ window.addEventListener("review-console-replaced", () => {
 });
 window.reviewDesktop = {
   dirty: hasUnsavedChanges,
-  canClose() {
+  async canClose() {
     if (savingFile) { notice("正在保存，请等待确认后再关闭"); return false; }
+    if (editor?.dirty && window.mygo) {
+      const choice = await window.mygo.call("Desktop.ConfirmClose", currentFile.path);
+      if (choice === 2) return false;
+      if (choice === 1) return true;
+      await saveFile();
+      return !editor.dirty;
+    }
     return !hasUnsavedChanges() || confirm("存在未保存的文件修改，关闭后将丢弃，是否继续？");
   },
   focus: focusSession,
   command(name) {
     if (name === "undo" || name === "redo") editHistory(name);
+    if (name === "find" || name === "replace") {
+      $("content").querySelector('[data-view="source"]')?.click();
+      findInEditor($("content"));
+    }
     if (name === "scratch") $("open-scratch").click();
     if (name === "save") {
       if (sourceOpen) notice("回复原文仅临时预览，不写入文件或会话");

@@ -28,12 +28,15 @@ npm run check
 npm run test:e2e
 npm run test:redesign
 npm run test:polish
+npm run test:editor
 npm run test:diff
 npm run test:visual
 npm run verify:package
 ```
 
-`check` 包含类型检查、公共接口测试、Go 的 Node 查找测试和网页/服务构建。只验证 Node 查找可运行 `npm run test:go`，不会打开窗口。浏览器测试使用隔离数据与无头 Chrome，不连接日用 Agent。截图和测试结果在 `test-results/`，下次运行会更新。
+`check` 包含类型检查、公共接口测试、Go 的 Node 查找与文件读写测试和网页/服务构建。只运行 Go 测试可使用 `npm run test:go`，不会打开窗口。浏览器测试使用隔离数据与无头 Chrome，不连接日用 Agent。截图和测试结果在 `test-results/`，下次运行会更新。
+
+`test:editor` 覆盖文件树预览、相对图片、默认预览、栏宽拖动与恢复、剪贴板 JPEG、保存取消、关闭保存、查找替换和外部修改。原生对话框使用 IPC 替身，不打开系统面板；磁盘写入与冲突另由 Go 测试覆盖。截图在 `test-results/editor/`。`test:desktop` 实测系统保存面板的取消与落盘、再次保存，以及 macOS 文件打开事件进入已运行的独立编辑窗口。Finder 冷启动仍需单独验收。
 
 ## 桌面测试
 
@@ -119,6 +122,6 @@ launchctl setenv REVIEW_CONSOLE_NODE "/absolute/path/to/node"
 - 原生按键测试失败：先确认目标窗口和异步操作已准备好，检查是否有输入法候选；保留错误与测试结果，不直接认定产品回归。
 - 新报错：先保存错误原文、操作步骤、构建版本，再复现。过去那次没有原文的报错未复现，没有证据支持预先改代码。
 - Git 提交详情必须继续返回全部 diff；读取通过 raw diff 和 `cat-file` 批处理，避免每个文件版本启动多个串行 Git。`test/history-batch.test.ts` 保护查询次数和比较语义。
-- 临时文档内容只在内存中，不写盘、不自动恢复；软换行按逻辑行显示行号。关闭确认是内容保护，不是构建时可以跳过的提示。
+- Markdown 编辑窗口通过桌面桥打开与保存文件；未保存文档及粘贴图片暂存在内存，不自动恢复。临时 Diff 仍不写盘。关闭时处理保存选择，不跳过提示。软换行按逻辑行显示行号。
 - 旧 compact-tool / visual-reply 的日用迁移尚未执行，不是本轮遗留代码修复。只有明确授权迁移时才按 README 的迁移步骤操作；常规构建和测试不改旧插件、个人 pi 配置或调用模型。
 - 规格和任务的变更保存在仓库对应票据中；当前流程有变时更新本文件，提交前检查差异和测试结果，不留只有用户知道的操作。

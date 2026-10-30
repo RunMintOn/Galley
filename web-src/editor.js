@@ -1,17 +1,42 @@
 import { EditorState, Compartment } from "@codemirror/state";
-import { EditorView, lineNumbers, keymap, highlightActiveLine } from "@codemirror/view";
+import { EditorView, lineNumbers, keymap, highlightActiveLine, drawSelection } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap, indentWithTab, undo, redo } from "@codemirror/commands";
-import { syntaxHighlighting, defaultHighlightStyle } from "@codemirror/language";
+import { syntaxHighlighting, HighlightStyle } from "@codemirror/language";
+import { tags } from "@lezer/highlight";
+import { search, searchKeymap, openSearchPanel } from "@codemirror/search";
 import { javascript } from "@codemirror/lang-javascript";
 import { markdown } from "@codemirror/lang-markdown";
 
 const editorTheme = EditorView.theme({
-  "&": { height: "100%", backgroundColor: "var(--background)", color: "var(--ink)", fontSize: "13px" },
-  ".cm-scroller": { fontFamily: "var(--mono)" },
-  ".cm-gutters": { backgroundColor: "var(--panel)", color: "var(--muted)", borderRight: "1px solid var(--border)" },
+  "&": { height: "100%", backgroundColor: "var(--editor-bg)", color: "var(--editor-ink)", fontSize: "13px" },
+  "&.cm-focused": { outline: "none" },
+  ".cm-scroller": { fontFamily: "var(--mono)", lineHeight: "1.75" },
+  ".cm-content": { padding: "16px 0", caretColor: "var(--ink)" },
+  ".cm-line": { padding: "0 16px" },
+  ".cm-gutters": { backgroundColor: "var(--editor-bg)", color: "var(--subtle)", border: "none", paddingRight: "8px" },
   ".cm-cursor": { borderLeftColor: "var(--ink)" },
-  ".cm-activeLine": { backgroundColor: "color-mix(in srgb,var(--accent) 7%,transparent)" },
+  ".cm-activeLine": { backgroundColor: "var(--editor-line)" },
+  "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, ::selection": { backgroundColor: "var(--editor-selection)" },
+  ".cm-panels": { backgroundColor: "var(--panel)", color: "var(--ink)", borderColor: "var(--border)" },
+  ".cm-search": { padding: "8px 12px", fontFamily: "var(--ui)" },
+  ".cm-textfield": { background: "var(--background)", border: "1px solid var(--border)", borderRadius: "4px", padding: "4px 6px" },
+  ".cm-button": { background: "var(--hover)", color: "var(--ink)", border: "1px solid var(--border)", borderRadius: "4px", textTransform: "none" },
 });
+const editorHighlight = HighlightStyle.define([
+  { tag: [tags.heading, tags.keyword], color: "var(--syntax-red)" },
+  { tag: tags.strong, color: "var(--syntax-orange)", fontWeight: "600" },
+  { tag: tags.emphasis, fontStyle: "italic" },
+  { tag: [tags.string, tags.link, tags.url], color: "var(--syntax-green)" },
+  { tag: [tags.monospace, tags.number, tags.atom], color: "var(--syntax-orange)" },
+  { tag: [tags.comment, tags.meta], color: "var(--subtle)" },
+  { tag: [tags.function(tags.variableName), tags.typeName], color: "var(--syntax-blue)" },
+]);
+const editing = [drawSelection(), search({ top: true }), keymap.of(searchKeymap), syntaxHighlighting(editorHighlight), editorTheme];
+
+export function findInEditor(parent = document) {
+  const host = parent.querySelector(".cm-editor");
+  if (host) openSearchPanel(EditorView.findFromDOM(host));
+}
 
 // The macOS menu consumes Cmd+Z before CodeMirror can see the keydown.
 export function editHistory(name) {
@@ -20,7 +45,7 @@ export function editHistory(name) {
   else document.execCommand(name);
 }
 
-export function createScratchEditor(parent, { state, text, label, isMarkdown, onChange, scrollTo }) {
+export function createScratchEditor(parent, { state, text, label, isMarkdown, onChange, onPasteImages, scrollTo }) {
   const view = new EditorView({
     parent, scrollTo,
     state: state || EditorState.create({
@@ -28,27 +53,29 @@ export function createScratchEditor(parent, { state, text, label, isMarkdown, on
       extensions: [
         EditorState.lineSeparator.of(text.match(/\r\n|\r|\n/)?.[0] || "\n"),
         isMarkdown ? markdown() : [], lineNumbers(), history(), highlightActiveLine(),
-        syntaxHighlighting(defaultHighlightStyle), EditorView.lineWrapping,
+        editing, EditorView.lineWrapping,
+        EditorView.domEventHandlers({
+          paste(event) {
+            const images = [...(event.clipboardData?.items || [])].filter(item => item.type.startsWith("image/")).map(item => item.getAsFile());
+            if (!onPasteImages || !images.length) return false;
+            event.preventDefault(); onPasteImages(images); return true;
+          },
+        }),
         EditorView.contentAttributes.of({ "aria-label": label, spellcheck: "false" }),
         keymap.of([indentWithTab, ...defaultKeymap, ...historyKeymap]),
         EditorView.updateListener.of(update => { if (update.docChanged) onChange(update.state.sliceDoc()); }),
-        EditorView.theme({
-          "&": { backgroundColor: "var(--sheet)", fontSize: "12.5px" },
-          ".cm-scroller": { overflow: "auto", lineHeight: "1.75" },
-          ".cm-content": { padding: "12px 0" },
-          ".cm-line": { padding: "0 12px" },
-        }),
-        editorTheme,
       ],
     }),
   });
   return {
+    insert(text) { view.dispatch(view.state.replaceSelection(text)); view.focus(); },
+    setText(text) { view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text } }); },
     snapshot: () => ({ state: view.state, scrollTo: view.scrollSnapshot() }),
     destroy: () => view.destroy(),
   };
 }
 
-export function createFileEditor(parent, file, onSave, onChange) {
+export function createFileEditor(parent, file, onSave, onChange, onPasteImages) {
   const access = new Compartment();
   let editable = !file.partial && /\.(md|markdown|mdx)$/i.test(file.path);
   let original = file.content;
@@ -62,7 +89,14 @@ export function createFileEditor(parent, file, onSave, onChange) {
         // Preserve disk line endings when CodeMirror serialises its normalised document.
         EditorState.lineSeparator.of(file.content.match(/\r\n|\r|\n/)?.[0] || "\n"),
         access.of(permissions()), language, lineNumbers(), history(), highlightActiveLine(),
-        syntaxHighlighting(defaultHighlightStyle), EditorView.lineWrapping,
+        editing, EditorView.lineWrapping,
+        EditorView.domEventHandlers({
+          paste(event) {
+            const images = [...(event.clipboardData?.items || [])].filter(item => item.type.startsWith("image/")).map(item => item.getAsFile());
+            if (!editable || !onPasteImages || !images.length) return false;
+            event.preventDefault(); onPasteImages(images, text => view.dispatch(view.state.replaceSelection(text))); return true;
+          },
+        }),
         EditorView.contentAttributes.of({ "aria-label": "文件内容", tabindex: "0" }),
         keymap.of([{ key: "Mod-s", run: () => { onSave(); return true; } }, ...defaultKeymap, ...historyKeymap]),
         EditorView.updateListener.of(update => { if (update.docChanged) onChange(); }),

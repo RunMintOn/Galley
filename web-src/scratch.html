@@ -1,7 +1,8 @@
 <!doctype html>
 <html lang="zh-CN" class="dark">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>临时文档 · Review Console</title><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/scratch.css"></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Markdown · Review Console</title><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/scratch.css"></head>
 <body>
-<header id="scratch-toolbar"><strong>临时文档</strong><button id="new-doc">＋ Markdown</button><button id="new-diff">＋ Diff</button><button id="tabs-layout" aria-pressed="false">纵向标签</button><span class="grow"></span><span class="pick"><select id="font" aria-label="正文字体" title="正文字体"></select></span><button id="theme" aria-label="切换深浅主题"></button><span class="pick"><select id="paper" aria-label="Paper colour"></select></span></header>
+<header id="scratch-toolbar"><strong>Markdown</strong><button id="new-doc" title="新建 Markdown（⌘T）">＋ Markdown</button><button id="new-diff">＋ Diff</button><button id="open-doc" title="打开（⌘O）">打开</button><button id="save-doc" title="保存（⌘S）" disabled>保存</button><button id="reload-doc">重新载入</button><button id="tabs-layout" aria-pressed="false">纵向标签</button><span class="grow"></span><label class="preview-preference"><input type="checkbox" id="default-preview">默认预览</label><span class="pick"><select id="font" aria-label="正文字体" title="正文字体"></select></span><button id="theme" aria-label="切换深浅主题"></button><span class="pick"><select id="paper" aria-label="Paper colour"></select></span></header>
 <main id="scratch-shell"><nav id="scratch-tabs" aria-label="临时标签页"></nav><section id="scratch-work"></section></main>
+<footer id="scratch-status" role="status"></footer>
 <script type="module" src="/scratch.js"></script></body></html>

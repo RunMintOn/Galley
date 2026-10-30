@@ -63,7 +63,7 @@ func command(w *mygo.Window, name string) {
 }
 func canClose(w *mygo.Window) bool {
 	// The bridge is installed before any editable content mounts; an unloaded page has no drafts.
-	value, err := eval(w, "window.reviewDesktop ? (window.reviewDesktop.canClose?.() ?? false) : true")
+	value, err := eval(w, "(async () => window.reviewDesktop ? await window.reviewDesktop.canClose() : true)()")
 	return err == nil && value == true
 }
 func configure(w *mygo.Window) {
@@ -144,7 +144,7 @@ func openScratch() {
 		scratch.Focus()
 		return
 	}
-	scratch = mygo.NewWindow(mygo.WindowOptions{Title: "临时文档", URL: service.Origin + "/scratch", Width: 1280, Height: 850, MinWidth: 700, MinHeight: 500, Page: mygo.PageOptions{TrustedOrigins: []string{service.Origin}, Session: webSession}})
+	scratch = mygo.NewWindow(mygo.WindowOptions{Title: "Markdown", URL: service.Origin + "/scratch", Width: 1280, Height: 850, MinWidth: 700, MinHeight: 500, Page: mygo.PageOptions{TrustedOrigins: []string{service.Origin}, Session: webSession}})
 	configure(scratch)
 }
 func targetArg(args []string) string {
@@ -189,7 +189,26 @@ func menu() *mygo.Menu {
 		{Role: mygo.RoleAppMenu},
 		{Label: "File", Submenu: []*mygo.MenuItem{
 			{Label: "审查台", Click: func(_ *mygo.MenuItem, _ *mygo.Window) { openReview("") }},
-			{Label: "临时文档", Accelerator: "CmdOrCtrl+Shift+N", Click: func(_ *mygo.MenuItem, _ *mygo.Window) { openScratch() }},
+			{Label: "Markdown 编辑器", Accelerator: "CmdOrCtrl+Shift+N", Click: func(_ *mygo.MenuItem, _ *mygo.Window) { openScratch() }},
+			{Label: "打开…", Accelerator: "CmdOrCtrl+O", Click: func(_ *mygo.MenuItem, _ *mygo.Window) {
+				openScratch()
+				w := scratch
+				go func() {
+					paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{
+						Parent: w, Title: "打开 Markdown", Multiple: true,
+						Filters: []mygo.FileFilter{{Name: "Markdown", Extensions: []string{"md", "markdown", "mdx", "txt"}}},
+					})
+					if err != nil {
+						log.Print(err)
+						return
+					}
+					mygo.RunOnMain(func() {
+						for _, path := range paths {
+							queueDocument(path)
+						}
+					})
+				}()
+			}},
 			item("新建 Markdown 标签", "CmdOrCtrl+T", "new-tab", true),
 			item("新建 Diff 标签", "CmdOrCtrl+Shift+T", "new-diff", true),
 			{Label: "关闭标签", Accelerator: "CmdOrCtrl+W", Click: func(_ *mygo.MenuItem, w *mygo.Window) {
@@ -200,6 +219,7 @@ func menu() *mygo.Menu {
 				}
 			}},
 			item("保存文件", "CmdOrCtrl+S", "save", false),
+			item("另存为…", "CmdOrCtrl+Shift+S", "save-as", true),
 			{Label: "关闭窗口", Accelerator: "CmdOrCtrl+Shift+W", Click: func(_ *mygo.MenuItem, w *mygo.Window) {
 				if w != nil {
 					w.Close()
@@ -210,6 +230,8 @@ func menu() *mygo.Menu {
 		{Label: "Edit", Submenu: []*mygo.MenuItem{
 			item("Undo", "CmdOrCtrl+Z", "undo", false),
 			item("Redo", "CmdOrCtrl+Shift+Z", "redo", false),
+			item("查找", "CmdOrCtrl+F", "find", false),
+			item("替换", "CmdOrCtrl+Alt+F", "replace", false),
 			{Type: mygo.MenuItemSeparator},
 			{Role: mygo.RoleCut},
 			{Role: mygo.RoleCopy},
@@ -275,6 +297,7 @@ func main() {
 		log.Fatal("服务地址无效")
 	}
 	mygo.Bind(Desktop{})
+	mygo.App.OnOpenFile(queueDocument)
 	mygo.App.OnSecondInstance(func(args []string, _ string) { openReview(targetArg(args)) })
 	mygo.App.OnWindowAllClosed(func() {})
 	mygo.App.OnActivate(func(visible bool) {
@@ -308,7 +331,17 @@ func main() {
 			})
 		}()
 	})
-	mygo.App.WhenReady(func() { mygo.App.SetMenu(menu()); openReview(targetArg(os.Args[1:])) })
+	mygo.App.WhenReady(func() {
+		mygo.App.SetMenu(menu())
+		pendingDocuments.Lock()
+		openingFile := len(pendingDocuments.paths) > 0
+		pendingDocuments.Unlock()
+		if openingFile {
+			openScratch()
+		} else {
+			openReview(targetArg(os.Args[1:]))
+		}
+	})
 	if err := mygo.App.Run(); err != nil {
 		log.Fatal(err)
 	}

@@ -45,13 +45,14 @@ try {
  system('click button "添加" of sheet 1 of window "Review Console"');
  await wait(()=>evaluate(main.id,"document.querySelectorAll('.project').length===2"));
  assert.ok(await evaluate(main.id,`[...document.querySelectorAll('.project')].some(el=>el.title===${JSON.stringify(picked)})`));
- await call("menu",{window:main.id,path:["File","临时文档"]});
+ await call("menu",{window:main.id,path:["File","Markdown 编辑器"]});
  const scratch=await wait(async()=>(await call("windows")).windows.find(w=>w.id!==main.id));
  await wait(()=>evaluate(scratch.id,"!!window.reviewDesktop"));
+ const raiseScratch=async()=>system('set frontmost to true\nperform action "AXRaise" of window '+JSON.stringify(await evaluate(scratch.id,"document.title")));
  await call("menu",{window:scratch.id,path:["File","新建 Markdown 标签"]});
  await wait(()=>evaluate(scratch.id,"document.querySelectorAll('[role=tab]').length===1"));
  const key=async(text,modifiers="")=>{
-  system('set frontmost to true\nperform action "AXRaise" of window "临时文档 · Review Console"');
+  await raiseScratch();
   await wait(()=>evaluate(scratch.id,"document.hasFocus()"));
   system(`keystroke "${text}"${modifiers ? " using "+modifiers : ""}`);
  };
@@ -84,7 +85,7 @@ try {
   await call("menu",{window:scratch.id,path:["File","新建 Markdown 标签"]});
   await wait(()=>evaluate(scratch.id,"document.querySelectorAll('[role=tab]').length===3"));
   await evaluate(scratch.id,`document.querySelector('#scratch-source .cm-content').focus();window.imeEvents=[];window.imeComposing=false;for(const type of ['compositionstart','compositionupdate','compositionend'])document.addEventListener(type,e=>{imeComposing=type!=='compositionend';imeEvents.push({type,data:e.data})},true);`);
-  system('set frontmost to true\nperform action "AXRaise" of window "临时文档 · Review Console"');
+  await raiseScratch();
   await wait(()=>evaluate(scratch.id,"document.hasFocus()"));
   assert.equal(inputSource(imeSource),imeSource);
   // The first keystroke after a source switch can be consumed while the IME attaches.
@@ -116,15 +117,45 @@ try {
  // Native window close requests are intercepted even when beforeunload cannot help.
  const sheets=action=>execFileSync("osascript",["-e",`tell application "System Events" to tell (first application process whose unix id is ${child.pid}) to ${action}`],{encoding:"utf8",timeout:5000}).trim();
  const retry=async(action)=>{for(let i=0;i<50;i++){try{return sheets(action)}catch{}await new Promise(r=>setTimeout(r,100))}throw new Error("窗口面板操作超时")};
+ let scratchWindow=JSON.stringify(await evaluate(scratch.id,"document.title"));
  await call("menu",{window:scratch.id,path:["File","关闭窗口"]});
  // The modal sheet replaces the window's AX children for a moment; retry instead of assuming one frame.
- await wait(()=>sheets('get exists sheet 1 of window "临时文档 · Review Console"')==="true");
- await retry('click button "Cancel" of sheet 1 of window "临时文档 · Review Console"');
+ await wait(()=>sheets('get exists sheet 1 of window '+scratchWindow)==="true");
+ await retry('click button "取消" of sheet 1 of window '+scratchWindow);
  await new Promise(r=>setTimeout(r,200));
- await evaluate(scratch.id,"window.confirm=()=>false");
- await call("menu",{window:scratch.id,path:["File","关闭窗口"]});
- await new Promise(r=>setTimeout(r,400));
  assert.equal((await call("windows")).windows.length,2);
+
+ // Save only test content into the isolated fixture directory.
+ await call("menu",{window:scratch.id,path:["File","新建 Markdown 标签"]});
+ await evaluate(scratch.id,"document.querySelector('#scratch-source .cm-content').focus();document.execCommand('insertText',false,'# Native save')");
+ scratchWindow=JSON.stringify(await evaluate(scratch.id,"document.title"));
+ await call("menu",{window:scratch.id,path:["File","保存文件"]});
+ await wait(()=>sheets("get exists sheet 1 of window "+scratchWindow)==="true");
+ system("set frontmost to true\nkey code 53");
+ await wait(()=>sheets("get exists sheet 1 of window "+scratchWindow)==="false");
+ assert.equal(await evaluate(scratch.id,"window.reviewDesktop.dirty()"),true,"取消保存不能丢失草稿");
+ await call("menu",{window:scratch.id,path:["File","保存文件"]});
+ await wait(()=>sheets("get exists sheet 1 of window "+scratchWindow)==="true");
+ system('set frontmost to true\nkeystroke "g" using {command down, shift down}');
+ await wait(()=>sheets("get exists sheet 1 of sheet 1 of window "+scratchWindow)==="true");
+ const canonicalRoot=await realpath(root);
+ system("set value of text field 1 of sheet 1 of sheet 1 of window "+scratchWindow+" to "+JSON.stringify(canonicalRoot));
+ system("key code 36");
+ await wait(()=>sheets("get exists sheet 1 of sheet 1 of window "+scratchWindow)==="false");
+ system("set value of text field 1 of sheet 1 of window "+scratchWindow+' to "native-save.md"');
+ system("key code 36");
+ const savedPath=join(root,"native-save.md");
+ await wait(async()=>await readFile(savedPath,"utf8")==="# Native save");
+ await evaluate(scratch.id,"document.querySelector('#scratch-source .cm-content').focus();document.execCommand('insertText',false,' saved')");
+ await call("menu",{window:scratch.id,path:["File","保存文件"]});
+ await wait(async()=>(await readFile(savedPath,"utf8")).includes("saved"));
+
+ const finderFile=join(root,"finder.md");
+ await writeFile(finderFile,"# Finder document\n");
+ execFileSync("open",["-a",resolve("dist-desktop-test/Review Console Test.app"),finderFile],{timeout:10000});
+ await wait(()=>evaluate(scratch.id,"document.querySelector('#scratch-name')?.value==='finder.md'"));
+ assert.equal(await evaluate(scratch.id,"document.querySelector('#scratch-source .cm-content').textContent"),"# Finder document");
+ scratchWindow=JSON.stringify(await evaluate(scratch.id,"document.title"));
  const focus=service.origin+"/#"+new URLSearchParams({token:service.token,session:"desktop-test",root});
  execFileSync(app,[focus],{env:{...process.env,REVIEW_CONSOLE_STATE:state,REVIEW_CONSOLE_DESKTOP_TEST:"1",MYGO_AUTOMATION:""},timeout:10000});
  await wait(()=>evaluate(main.id,"document.querySelector('#sessions').value==='desktop-test'"));
@@ -137,11 +168,14 @@ try {
  await wait(async()=>(await evaluate(main.id,"window.innerWidth"))<beforeZoom);
  await call("menu",{window:main.id,path:["View","实际大小"]});
  await wait(async()=>(await evaluate(main.id,"window.innerWidth"))===beforeZoom);
- await evaluate(scratch.id,"window.confirm=()=>true");
  await call("menu",{window:main.id,path:["File","退出应用"]});
- await wait(()=>child.exitCode!==null);
+ await wait(()=>{
+  if(child.exitCode!==null)return true;
+  if(sheets('get exists sheet 1 of window '+scratchWindow)==="true")sheets('click button "不保存" of sheet 1 of window '+scratchWindow);
+  return false;
+ });
  assert.equal((await fetch(service.origin+"/health")).status,200,"退出外壳不停止后台服务");
- const result={passed:true,directory,screenshots:shots,shellRSSKiB:Number(memory),nativeMenu:true,nativeKeyboard:true,nativeZoom:true,nativeFolderPicker:true,nativeIME,singleInstance:true,backgroundServiceSurvives:true};
+ const result={passed:true,directory,screenshots:shots,shellRSSKiB:Number(memory),nativeMenu:true,nativeKeyboard:true,nativeZoom:true,nativeFolderPicker:true,nativeFileSave:true,nativeFinderOpen:true,nativeIME,singleInstance:true,backgroundServiceSurvives:true};
  await writeFile(join(shots,"result.json"),JSON.stringify(result,null,2));console.log(JSON.stringify(result));
 } finally {
  connection?.destroy();if(child.exitCode===null)child.kill("SIGKILL");

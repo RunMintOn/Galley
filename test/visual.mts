@@ -86,7 +86,7 @@ try {
   page.on("pageerror", error => errors.push(error.message));
   await page.goto(service.origin + "/#token=visual-fixture&session=visual");
   await page.locator("#document .mermaid-diagram svg").first().waitFor();
-  await page.locator("#tree summary", { hasText: "src/" }).click();
+  await page.locator("#tree summary", { hasText: /^src$/ }).click();
   await page.getByRole("button", { name: "app.go", exact: true }).waitFor();
   await page.evaluate(() => document.fonts.ready);
   const shoot = async name => { await page.mouse.move(1, 899); await page.screenshot({ path: shots + "/" + name + ".png" }); };

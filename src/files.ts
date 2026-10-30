@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
-import { open, opendir, realpath, stat, type FileHandle } from "node:fs/promises";
-import { isAbsolute, relative, resolve, sep } from "node:path";
+import { open, opendir, realpath, stat, readFile, mkdir, writeFile, type FileHandle } from "node:fs/promises";
+import { isAbsolute, relative, resolve, sep, extname, dirname, basename } from "node:path";
+import { randomUUID } from "node:crypto";
 import { ConsoleError, type Store } from "./store.ts";
 
 const EDIT_LIMIT = 2 * 1024 * 1024;
@@ -42,6 +43,25 @@ export async function tree(store: Store, root: string, path: string) {
   }
   entries.sort((a, b) => Number(b.directory) - Number(a.directory) || a.name.localeCompare(b.name));
   return { entries, truncated };
+}
+const imageTypes: Record<string, string> = { ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp", ".svg": "image/svg+xml", ".avif": "image/avif", ".bmp": "image/bmp", ".ico": "image/x-icon" };
+export async function readImage(store: Store, root: string, path: string) {
+  const actual = await projectPath(store, root, path);
+  const type = imageTypes[extname(actual).toLowerCase()];
+  if (!type) throw new ConsoleError("不是图片文件", 415);
+  return { url: `data:${type};base64,${(await readFile(actual)).toString("base64")}` };
+}
+export async function saveImage(store: Store, body: { root: string; path: string; type: string; data: string }) {
+  await projectPath(store, body.root, body.path);
+  const ext = Object.keys(imageTypes).find(ext => imageTypes[ext] === body.type);
+  if (!ext) throw new ConsoleError("不支持的图片格式", 415);
+  const assets = basename(body.path, extname(body.path)) + ".assets";
+  const directory = resolve(await projectPath(store, body.root, dirname(body.path)), assets);
+  await mkdir(directory, { recursive: true });
+  const actual = await projectPath(store, body.root, directory);
+  const name = `image-${randomUUID()}${ext}`;
+  await writeFile(resolve(actual, name), Buffer.from(body.data, "base64"));
+  return { source: assets + "/" + name };
 }
 const versionOf = (content: Buffer) => createHash("sha256").update(content).digest("hex");
 export async function readText(store: Store, root: string, path: string, offset = 0) {

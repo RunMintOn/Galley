@@ -10,7 +10,7 @@ import { katex } from "@mdit/plugin-katex";
 import { mountPlot } from "./plot.js";
 import { adjustDiagramContrast } from "./diagram-contrast.js";
 
-export function createReplyRenderer(preview, { enhanced = true } = {}) {
+export function createReplyRenderer(preview, { enhanced = true, resolveImage, summary: showSummary = true } = {}) {
 const markdown = new MarkdownIt({ html: false, breaks: true })
   .use(taskLists)
   .use(footnote)
@@ -139,6 +139,16 @@ function render(text) {
   } else {
     preview.innerHTML = markdown.render(text, env);
   }
+  if (resolveImage) preview.querySelectorAll("img").forEach(img => {
+    const source = img.getAttribute("src");
+    if (/^(https?:|data:|blob:)/i.test(source)) return;
+    img.removeAttribute("src");
+    Promise.resolve().then(() => resolveImage(source)).then(url => {
+      if (preview.contains(img)) img.src = url;
+    }).catch(error => {
+      if (preview.contains(img)) { img.classList.add("image-missing"); img.title = error.message; }
+    });
+  });
   // Only isolated inline path tokens become links; code blocks remain literal.
   preview.querySelectorAll("code:not(pre code)").forEach(code => {
     if (code.closest("a")) return;
@@ -153,6 +163,7 @@ function render(text) {
   summary.className = "docmeta";
   // Migrated from VisualReply: derive the reading summary from rendered content.
   function updateSummary() {
+    if (!showSummary) return;
     const body = preview.cloneNode(true);
     body.querySelector(".docmeta")?.remove();
     const words = (body.textContent.match(/[\u4e00-\u9fa5]|[a-zA-Z]+/g) || []).length;
