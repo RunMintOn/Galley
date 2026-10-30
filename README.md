@@ -1,4 +1,4 @@
-# pi-review-console
+# Galley
 
 一个窗口审查多个本地项目：项目 / 文件树 / 本轮改动或 Git 历史 / 回复。
 
@@ -11,12 +11,12 @@
 ```sh
 npm ci
 npm run build:desktop
-open "dist-desktop/Review Console.app"
+open "dist-desktop/Galley.app"
 ```
 
 Go 使用 PATH 中的正常安装，不依赖临时工具链。构建包含网页层，产物为本机签名的 `.app`，不是已公证的公众发行包。无需安装 mygo CLI。正在使用中的应用会阻止覆盖，请按开发文档正常退出并停止旧服务后更新。
 
-`/review` 优先寻找 `REVIEW_CONSOLE_APP` 指定位置、`~/Applications/Review Console.app`、`/Applications/Review Console.app`，再找仓库构建产物；找到后启动或唤回桌面审查台，未安装时保留浏览器入口。配置 `REVIEW_CONSOLE_APP` 时须给完整 `.app` 路径。
+`/review` 优先寻找 `REVIEW_CONSOLE_APP` 指定位置、`~/Applications/Galley.app`、`/Applications/Galley.app`，再找仓库构建产物；找到后启动或唤回桌面审查台，未安装时保留浏览器入口。配置 `REVIEW_CONSOLE_APP` 时须给完整 `.app` 路径。
 
 `/review` 会把 pi 正在使用的 Node 路径传给桌面应用。独立启动时，应用自动查找 PATH 和常见安装位置；可用 `REVIEW_CONSOLE_NODE` 指定 Node 可执行文件的绝对路径。显式指定的 Node 无效或过旧时会直接报错，不自动改用其他版本。错误框会说明安装、更新或取消错误配置的方法；“复制信息并退出”可保留完整诊断。Finder 的环境配置与完整查找顺序见 [开发与交接](docs/development.md#node-查找与配置)。
 
@@ -25,7 +25,7 @@ Go 使用 PATH 中的正常安装，不依赖临时工具链。构建包含网�
 - 从第二栏底部或 File 菜单打开 Markdown 编辑窗口，可与审查台同时使用。
 - 支持源码 / 分栏 / 预览、临时文本 Diff、多标签与横纵排列；`Cmd+T` 新建 Markdown，`Cmd+Shift+T` 新建 Diff，`Cmd+W` 关闭标签，`Cmd+1…9` 切换。
 - `Cmd+O` 使用系统面板打开 Markdown；`Cmd+S` 保存，未命名文档首次弹出保存位置；`Cmd+Shift+S` 另存为。标签圆点标记未保存修改，关闭时可选择保存、不保存或取消。
-- Finder 右键“打开方式”可以选择 Review Console。设为默认：选中 `.md` → 显示简介 → 打开方式 → Review Console → 全部更改。应用不会自动抢占默认关联。
+- Finder 右键“打开方式”可以选择 Galley。设为默认：选中 `.md` → 显示简介 → 打开方式 → Galley → 全部更改。应用不会自动抢占默认关联。
 - 可粘贴剪贴板中的图片并立即预览。未保存时暂存在内存，保存时写入 `<文件名>.assets/` 并使用相对引用。已有 Markdown 支持相对路径与 HTTP(S) 图片；另存为到其他目录会调整已有图片引用，不移动原图。
 - 外部修改：未编辑的文件自动刷新；有本地草稿时保留草稿并提示，保存前确认是否覆盖。“重新载入”可放弃草稿读取磁盘版本。
 - Markdown 与 Diff 源码使用 CodeMirror，提供行号、软换行、撤销、查找替换（`Cmd+F` / `Cmd+Option+F`）；折行不新增行号，切换标签与视图保留光标和撤销历史。

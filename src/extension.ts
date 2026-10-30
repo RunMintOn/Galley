@@ -119,9 +119,9 @@ export default function reviewConsole(pi: ExtensionAPI) {
         const connected = await connect(ctx);
         const hash = new URLSearchParams({ token: connected.token, session: ctx.sessionManager.getSessionId(), root: ctx.cwd });
         const url = connected.origin + "/#" + hash;
-        const candidates = [process.env.REVIEW_CONSOLE_APP, join(homedir(), "Applications/Review Console.app"), "/Applications/Review Console.app", fileURLToPath(new URL("../dist-desktop/Review Console.app", import.meta.url))].filter((path): path is string => !!path);
+        const candidates = [process.env.REVIEW_CONSOLE_APP, join(homedir(), "Applications/Galley.app"), "/Applications/Galley.app", fileURLToPath(new URL("../dist-desktop/Galley.app", import.meta.url))].filter((path): path is string => !!path);
         let desktop = "";
-        for (const path of candidates) { try { await access(join(path, "Contents/MacOS/ReviewConsole")); desktop = path; break; } catch { /* Try the next installation location. */ } }
+        for (const path of candidates) { try { await access(join(path, "Contents/MacOS/Galley")); desktop = path; break; } catch { /* Try the next installation location. */ } }
         if (!desktop) await post("focus", { sessionId: ctx.sessionManager.getSessionId() });
         const result = await pi.exec("open", desktop ? ["-n", "-a", desktop, "--args", url, `--node=${process.execPath}`] : [url], { timeout: 10000 });
         if (result.code !== 0) ctx.ui.notify(url, "warning");

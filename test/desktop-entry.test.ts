@@ -8,8 +8,8 @@ import { startConsole } from "../src/server.ts";
 
 test("/review launches the installed app with a single-instance session handoff", async () => {
   const directory=await mkdtemp(join(tmpdir(),"review-entry-"));
-  const root=join(directory,"repo"),app=join(directory,"Review Console.app");
-  await mkdir(root);await mkdir(join(app,"Contents/MacOS"),{recursive:true});await writeFile(join(app,"Contents/MacOS/ReviewConsole"),"");
+  const root=join(directory,"repo"),app=join(directory,"Galley.app");
+  await mkdir(root);await mkdir(join(app,"Contents/MacOS"),{recursive:true});await writeFile(join(app,"Contents/MacOS/Galley"),"");
   const service=await startConsole({directory,token:"entry-test"});
   await writeFile(join(directory,"service.json"),JSON.stringify({origin:service.origin,token:service.token,pid:process.pid}));
   const previous={state:process.env.REVIEW_CONSOLE_STATE,app:process.env.REVIEW_CONSOLE_APP};

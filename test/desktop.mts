@@ -5,7 +5,7 @@ import { join, resolve } from "node:path";
 import { spawn, execFileSync } from "node:child_process";
 import net from "node:net";
 const directory=await mkdtemp(join(tmpdir(),"review-desktop-"));
-const app=resolve("dist-desktop-test/Review Console Test.app/Contents/MacOS/ReviewConsole");
+const app=resolve("dist-desktop-test/Galley Test.app/Contents/MacOS/Galley");
 const socket=join(directory,"automation.sock"), state=join(directory,"state");
 const log=await import("node:fs").then(fs=>fs.openSync(join(directory,"app.log"),"w"));
 const inputSource=(source?)=>execFileSync("swift",[resolve("test/input-source.swift"),...(source?[source]:[])],{encoding:"utf8",timeout:30000}).trim();
@@ -27,22 +27,22 @@ try {
  const main=await wait(async()=>{const w=(await call("windows")).windows[0];return w&&await evaluate(w.id,"!!window.reviewDesktop")&&w});
  const system=script=>execFileSync("osascript",["-e",`tell application "System Events"\n tell (first application process whose unix id is ${child.pid})\n ${script}\n end tell\nend tell`],{encoding:"utf8",timeout:10000}).trim();
  await mkdir(join(directory,"picked"));const picked=await realpath(join(directory,"picked"));
- await call("menu",{window:main.id,path:["File","Review Console"]});
+ await call("menu",{window:main.id,path:["File","Galley"]});
  await evaluate(main.id,"document.querySelector('#add-project').click()");
- await wait(()=>system('get exists sheet 1 of window "Review Console"')==="true");
+ await wait(()=>system('get exists sheet 1 of window "Galley"')==="true");
  system('set frontmost to true\nkey code 53');
- await wait(()=>system('get exists sheet 1 of window "Review Console"')==="false");
+ await wait(()=>system('get exists sheet 1 of window "Galley"')==="false");
  assert.equal(await evaluate(main.id,"document.querySelectorAll('.project').length"),1,"取消面板不添加项目或弹手输框");
  await evaluate(main.id,"document.querySelector('#add-project').click()");
- await wait(()=>system('get exists sheet 1 of window "Review Console"')==="true");
+ await wait(()=>system('get exists sheet 1 of window "Galley"')==="true");
  system(`set frontmost to true\nkeystroke "g" using {command down, shift down}`);
- await wait(()=>system('get exists sheet 1 of sheet 1 of window "Review Console"')==="true");
+ await wait(()=>system('get exists sheet 1 of sheet 1 of window "Galley"')==="true");
  // AX fills the path atomically; rapid keystrokes can be dropped by the system's path completion.
- system(`set value of text field 1 of sheet 1 of sheet 1 of window "Review Console" to ${JSON.stringify(picked)}`);
- await wait(()=>system('get value of text field 1 of sheet 1 of sheet 1 of window "Review Console"')===picked);
+ system(`set value of text field 1 of sheet 1 of sheet 1 of window "Galley" to ${JSON.stringify(picked)}`);
+ await wait(()=>system('get value of text field 1 of sheet 1 of sheet 1 of window "Galley"')===picked);
  system('key code 36');
- await wait(()=>system('get exists sheet 1 of sheet 1 of window "Review Console"')==="false");
- system('click button "添加" of sheet 1 of window "Review Console"');
+ await wait(()=>system('get exists sheet 1 of sheet 1 of window "Galley"')==="false");
+ system('click button "添加" of sheet 1 of window "Galley"');
  await wait(()=>evaluate(main.id,"document.querySelectorAll('.project').length===2"));
  assert.ok(await evaluate(main.id,`[...document.querySelectorAll('.project')].some(el=>el.title===${JSON.stringify(picked)})`));
  await call("menu",{window:main.id,path:["File","Markdown Editor"]});
@@ -152,7 +152,7 @@ try {
 
  const finderFile=join(root,"finder.md");
  await writeFile(finderFile,"# Finder document\n");
- execFileSync("open",["-a",resolve("dist-desktop-test/Review Console Test.app"),finderFile],{timeout:10000});
+ execFileSync("open",["-a",resolve("dist-desktop-test/Galley Test.app"),finderFile],{timeout:10000});
  await wait(()=>evaluate(scratch.id,"document.querySelector('#scratch-name')?.value==='finder.md'"));
  assert.equal(await evaluate(scratch.id,"document.querySelector('#scratch-source .cm-content').textContent"),"# Finder document");
  scratchWindow=JSON.stringify(await evaluate(scratch.id,"document.title"));
@@ -168,7 +168,7 @@ try {
  await wait(async()=>(await evaluate(main.id,"window.innerWidth"))<beforeZoom);
  await call("menu",{window:main.id,path:["View","Actual Size"]});
  await wait(async()=>(await evaluate(main.id,"window.innerWidth"))===beforeZoom);
- await call("menu",{window:main.id,path:["File","Quit Review Console"]});
+ await call("menu",{window:main.id,path:["File","Quit Galley"]});
  await wait(()=>{
   if(child.exitCode!==null)return true;
   if(sheets('get exists sheet 1 of window '+scratchWindow)==="true")sheets('click button "不保存" of sheet 1 of window '+scratchWindow);

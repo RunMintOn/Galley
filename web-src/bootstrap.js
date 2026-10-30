@@ -42,7 +42,7 @@ if (window.mygo) {
     channel.onmessage = null;
     if (received) {
       channel.close();
-      message.textContent = protectedPage ? "Another Review Console tab has unsaved changes. Return to it; this tab can be closed." : "Switched to the existing Review Console; this tab can be closed.";
+      message.textContent = protectedPage ? "Another Galley tab has unsaved changes. Return to it; this tab can be closed." : "Switched to the existing Galley; this tab can be closed.";
       window.close();
     }
     return received;

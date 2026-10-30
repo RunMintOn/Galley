@@ -265,7 +265,7 @@ document.addEventListener("click", e => {
   }
 });
 $("remove-project").onclick = run(async () => {
-  if (!state.root || !confirm("Remove this project from Review Console? Files on disk are not deleted.")) return;
+  if (!state.root || !confirm("Remove this project from Galley? Files on disk are not deleted.")) return;
   if (!leaveFile()) return;
   setSource(false);
   closeHistory();

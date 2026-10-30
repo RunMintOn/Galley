@@ -22,8 +22,8 @@ async function existing(directory: string): Promise<Service | undefined> {
       if (health.app !== "pi-review-console") return;
       if (health.build !== BUILD) {
         const command = `REVIEW_CONSOLE_STATE=${shellQuote(resolve(directory))} ${shellQuote(process.execPath)} ${shellQuote(fileURLToPath(new URL("./cli.mjs", import.meta.url)))} stop`;
-        const error = new Error("The Review Console service is from an older build.\nSave your drafts and quit Review Console normally, then run in a terminal:\n" + command +
-          "\n\nReopen Review Console and run /reload in active pi sessions.\nThis briefly disconnects the console but does not stop the pi Agent or delete project and round data.");
+        const error = new Error("The Galley service is from an older build.\nSave your drafts and quit Galley normally, then run in a terminal:\n" + command +
+          "\n\nReopen Galley and run /reload in active pi sessions.\nThis briefly disconnects the console but does not stop the pi Agent or delete project and round data.");
         error.name = "ServiceVersionError"; throw error;
       }
       return service;

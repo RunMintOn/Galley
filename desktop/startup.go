@@ -22,7 +22,7 @@ func startupError(failure *startupFailure) {
 	mygo.App.WhenReady(func() {
 		go func() {
 			result, _ := mygo.Dialog.Message(mygo.MessageOptions{
-				Type: mygo.MessageError, Title: "Review Console",
+				Type: mygo.MessageError, Title: "Galley",
 				Message: failure.message, Detail: failure.detail,
 				Buttons: []string{"Quit", "Copy Details and Quit"},
 			})

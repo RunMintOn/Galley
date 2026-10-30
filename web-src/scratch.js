@@ -34,7 +34,7 @@ function tabsView() {
     close.setAttribute("aria-label", "Close " + tab.name); close.onclick = run(() => closeTab(tab.id));
     wrapper.append(select, close); $("scratch-tabs").append(wrapper);
   }
-  document.title = (current()?.name || "Markdown") + (current() && changed(current()) ? " •" : "") + " · Review Console";
+  document.title = (current()?.name || "Markdown") + (current() && changed(current()) ? " •" : "") + " · Galley";
 }
 function create(kind = "doc", doc) {
   if (doc) {

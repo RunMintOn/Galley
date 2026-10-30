@@ -135,7 +135,7 @@ func openReview(raw string) {
 			target = raw
 		}
 	}
-	review = mygo.NewWindow(mygo.WindowOptions{Title: "Review Console", URL: target, Width: 1440, Height: 950, MinWidth: 950, MinHeight: 600, Page: mygo.PageOptions{TrustedOrigins: []string{service.Origin}, Session: webSession}})
+	review = mygo.NewWindow(mygo.WindowOptions{Title: "Galley", URL: target, Width: 1440, Height: 950, MinWidth: 950, MinHeight: 600, Page: mygo.PageOptions{TrustedOrigins: []string{service.Origin}, Session: webSession}})
 	configure(review)
 }
 func openScratch() {
@@ -188,7 +188,7 @@ func menu() *mygo.Menu {
 	return mygo.NewMenu([]*mygo.MenuItem{
 		{Role: mygo.RoleAppMenu},
 		{Label: "File", Submenu: []*mygo.MenuItem{
-			{Label: "Review Console", Click: func(_ *mygo.MenuItem, _ *mygo.Window) { openReview("") }},
+			{Label: "Galley", Click: func(_ *mygo.MenuItem, _ *mygo.Window) { openReview("") }},
 			{Label: "Markdown Editor", Accelerator: "CmdOrCtrl+Shift+N", Click: func(_ *mygo.MenuItem, _ *mygo.Window) { openScratch() }},
 			{Label: "Open…", Accelerator: "CmdOrCtrl+O", Click: func(_ *mygo.MenuItem, _ *mygo.Window) {
 				openScratch()
@@ -225,7 +225,7 @@ func menu() *mygo.Menu {
 					w.Close()
 				}
 			}},
-			{Label: "Quit Review Console", Accelerator: "CmdOrCtrl+Q", Click: func(_ *mygo.MenuItem, _ *mygo.Window) { mygo.App.Quit() }},
+			{Label: "Quit Galley", Accelerator: "CmdOrCtrl+Q", Click: func(_ *mygo.MenuItem, _ *mygo.Window) { mygo.App.Quit() }},
 		}},
 		{Label: "Edit", Submenu: []*mygo.MenuItem{
 			item("Undo", "CmdOrCtrl+Z", "undo", false),
@@ -256,10 +256,10 @@ func menu() *mygo.Menu {
 }
 
 func main() {
-	mygo.App.SetName("Review Console")
+	mygo.App.SetName("Galley")
 	// Isolated test instances must not take over the user's running app.
 	if testMode {
-		mygo.App.SetName("Review Console Test")
+		mygo.App.SetName("Galley Test")
 		webSession = mygo.NewEphemeralSession()
 	}
 	if !mygo.App.RequestSingleInstanceLock() {

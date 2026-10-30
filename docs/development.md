@@ -46,7 +46,7 @@ npm run verify:package
 npm run test:desktop
 ```
 
-该命令自动构建带自动化能力的测试包，放在 `dist-desktop-test/Review Console Test.app`。测试使用独立数据目录与内存页面会话，结束时关闭自己的进程和服务。它不会覆盖 `dist-desktop/Review Console.app`，测试后不必补做发布构建。
+该命令自动构建带自动化能力的测试包，放在 `dist-desktop-test/Galley Test.app`。测试使用独立数据目录与内存页面会话，结束时关闭自己的进程和服务。它不会覆盖 `dist-desktop/Galley.app`，测试后不必补做发布构建。
 
 真实中文候选专项可指定本机已启用的输入法：
 
@@ -60,7 +60,7 @@ npm run test:desktop -- --ime=com.bytedance.inputmethod.doubaoime.pinyin
 
 ```sh
 npm run build:desktop
-open "dist-desktop/Review Console.app"
+open "dist-desktop/Galley.app"
 ```
 
 发布构建自动包含网页和服务构建、Go 编译与本机签名校验，不复制 Node、Node 许可证或 `runtime.json`。先在独立目录完成编译和签名，成功后才替换正式产物；失败时旧应用保持不变。构建接受 Node ≥22.19.0，`.node-version` 仍固定推荐开发版本。运行 `.app` 需要本机已有 Node ≥22.19.0，不需要 Go。
@@ -69,7 +69,7 @@ open "dist-desktop/Review Console.app"
 
 若目标应用或它的后台服务仍在使用产物，构建会提前拒绝覆盖。按以下顺序更新：
 
-1. 正常退出 Review Console。让关闭保护处理文件草稿和非空临时文档；取消退出时保留内容，不强制杀进程。
+1. 正常退出 Galley。让关闭保护处理文件草稿和非空临时文档；取消退出时保留内容，不强制杀进程。
 2. 运行 `npm run stop` 停止旧审查台服务。它不终止 pi Agent，也不删除项目和轮次数据。有活跃会话时先说明这次短暂中断。
 3. 运行 `npm run build:desktop`，再用上面的 `open` 命令启动。
 4. 若本次更新了已安装的 pi 扩展，相关活跃 pi 会话还需要 `/reload`。没有活跃会话时不需要补做。
@@ -101,7 +101,7 @@ brew install node
 需要固定其他位置时，终端启动可使用环境变量；Finder 启动可设置当前登录会话的环境后重新打开应用：
 
 ```sh
-REVIEW_CONSOLE_NODE="/absolute/path/to/node" "dist-desktop/Review Console.app/Contents/MacOS/ReviewConsole"
+REVIEW_CONSOLE_NODE="/absolute/path/to/node" "dist-desktop/Galley.app/Contents/MacOS/Galley"
 launchctl setenv REVIEW_CONSOLE_NODE "/absolute/path/to/node"
 ```
 
