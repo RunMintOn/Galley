@@ -26,6 +26,7 @@
     "test:redesign": "node --experimental-strip-types test/redesign.mts",
     "test:diff": "node --experimental-strip-types test/diff-fold.mts",
     "test:performance": "node --experimental-strip-types test/performance.mts",
+    "test:main-performance": "node --experimental-strip-types test/main-editor-performance.mts",
     "test:polish": "node --experimental-strip-types --test test/polish.mts",
     "test:editor": "node --experimental-strip-types --test test/editor.mts",
     "test:files": "node --experimental-strip-types --test test/file-explorer.mts test/file-actions.test.ts",

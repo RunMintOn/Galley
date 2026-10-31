@@ -33,6 +33,7 @@ npm run test:files
 npm run test:diff
 npm run test:visual
 npm run test:performance
+npm run test:main-performance
 npm run verify:package
 ```
 
@@ -40,7 +41,11 @@ npm run verify:package
 
 性能测量口径、历史对照和后续调查入口见 [性能优化记录](performance.md)。`test:performance` 检查 Markdown 块复用并采样渲染及工作区接口，结果在 `test-results/performance/`；同机前后对照时单独运行，不与其他测试并发。当前旧视觉脚本的已知失败也记录在该文档，不将未执行的视觉断言视为通过。
 
+`test:main-performance` 专测主界面文件编辑器和 Diff，检查输入时的全文转换、撤销与等长恢复、长行高亮和布局切换是否重复比较。可用 `--ref=<commit> --baseline` 在当前依赖环境中打包该提交的 `editor.js` / `diff.js` 作对照；`--profile` 保存主编辑器 CPU profile。独立 Markdown 窗口和 pi 集成的低优先级探针保存在 `.scratch/performance/research/`，不属于默认回归。
+
 `test:editor` 覆盖文件树预览、相对图片、默认预览、栏宽拖动与恢复、剪贴板 JPEG、保存取消、关闭保存、查找替换和外部修改。原生对话框使用 IPC 替身，不打开系统面板；磁盘写入与冲突另由 Go 测试覆盖。截图在 `test-results/editor/`。`test:desktop` 实测系统保存面板的取消与落盘、再次保存，以及 macOS 文件打开事件进入已运行的独立编辑窗口。Finder 冷启动仍需单独验收。
+
+桌面回归另覆盖主界面约 818KB 文件的末尾导航、输入后未保存状态与完全撤销恢复，并记录 WKWebView 采样；采样不是输入法时延指标。
 
 `test:files` 覆盖新建、保留草稿的重命名、跨项目复制/移动、废纸篓与撤回、同名冲突、快速找文件、展开/折叠记忆和回到应用时的项目行高度。使用隔离目录与无头 Chrome；macOS 废纸篓测试只操作测试创建的文件，不打开 Finder。截图在 `test-results/file-explorer/`。
 

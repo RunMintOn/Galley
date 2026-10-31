@@ -54,15 +54,18 @@ function lineHTML(text, tokens, marks) {
   for (const token of tokens) { points.add(token.from); points.add(token.to); }
   for (const mark of marks) { points.add(mark.from); points.add(mark.to); }
   const ordered = [...points].filter(n => n >= 0 && n <= text.length).sort((a, b) => a - b);
-  let html = "";
+  let html = "", markAt = 0, tokenAt = 0;
   for (let i = 0; i < ordered.length - 1; i++) {
     const from = ordered[i], to = ordered[i + 1];
     if (to <= from) continue;
     let chunk = escape(text.slice(from, to));
-    const mark = marks.find(item => item.from <= from && item.to >= to);
-    if (mark) chunk = `<i class="${mark.classes}">${chunk}</i>`;
-    const token = tokens.find(item => item.from <= from && item.to >= to);
-    if (token) chunk = `<span class="${token.classes}">${chunk}</span>`;
+    // Both range lists are ordered; do not rescan them for every boundary.
+    while (markAt < marks.length && marks[markAt].to <= from) markAt++;
+    const mark = marks[markAt];
+    if (mark && mark.from <= from && mark.to >= to) chunk = `<i class="${mark.classes}">${chunk}</i>`;
+    while (tokenAt < tokens.length && tokens[tokenAt].to <= from) tokenAt++;
+    const token = tokens[tokenAt];
+    if (token && token.from <= from && token.to >= to) chunk = `<span class="${token.classes}">${chunk}</span>`;
     html += chunk;
   }
   return html;
@@ -76,6 +79,7 @@ export function mountDiff(root, file, onOpen, { initialLayout = "unified", toolb
   // src/diff.ts already stripped the +/-/space marker, so content is the raw line.
   const lineText = line => line.content ?? "";
   const tokenCache = new Map();
+  const pairsCache = new WeakMap();
   const tokensFor = text => {
     if (!parser) return [];
     if (!tokenCache.has(text)) tokenCache.set(text, tokenize(text, parser));
@@ -158,7 +162,8 @@ export function mountDiff(root, file, onOpen, { initialLayout = "unified", toolb
 
   function hunkHTML(block) {
     const id = hunkId++;
-    const all = pairs(block.lines);
+    let all = pairsCache.get(block);
+    if (!all) { all = pairs(block.lines); pairsCache.set(block, all); }
     const render = layout === "split" ? splitHTML : unifiedHTML;
     let body = "";
     let index = 0;
@@ -224,6 +229,7 @@ export function mountDiff(root, file, onOpen, { initialLayout = "unified", toolb
       diffs.append(notice);
     }
     controls.querySelectorAll("[data-layout]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.layout === layout)));
+    tokenCache.clear();
   }
   const nav = (step) => {
     const hunks = [...diffs.querySelectorAll(".hunk")];

@@ -23,11 +23,31 @@ try {
  service=await wait(async()=>JSON.parse(await readFile(join(state,"service.json"),"utf8")));
  const post=async(path,body)=>{const r=await fetch(service.origin+"/api/"+path,{method:"POST",headers:{Authorization:`Bearer ${service.token}`,"Content-Type":"application/json"},body:JSON.stringify(body)});assert.ok(r.ok,await r.text())};
  const root=join(directory,"project");await mkdir(root);await writeFile(join(root,"note.md"),"# Desktop\n");
+ const mainEditorText=Array.from({length:20000},(_,i)=>`export const item_${i} = compute(${i});\n`).join("");
+ await writeFile(join(root,"large.ts"),mainEditorText);
  await post("register",{cwd:root,sessionId:"desktop-test",title:"Desktop fixture"});await post("round",{id:"r1",sessionId:"desktop-test",outcome:"completed",end:1});
  const main=await wait(async()=>{const w=(await call("windows")).windows[0];return w&&await evaluate(w.id,"!!window.reviewDesktop")&&w});
  const system=script=>execFileSync("osascript",["-e",`tell application "System Events"\n tell (first application process whose unix id is ${child.pid})\n ${script}\n end tell\nend tell`],{encoding:"utf8",timeout:10000}).trim();
  await mkdir(join(directory,"picked"));const picked=await realpath(join(directory,"picked"));
  await call("menu",{window:main.id,path:["File","Galley"]});
+ await wait(()=>evaluate(main.id,"!!document.querySelector('#tree [data-path=\"large.ts\"]')"));
+ await evaluate(main.id,"document.querySelector('#tree [data-path=\"large.ts\"]').click()");
+ await wait(()=>evaluate(main.id,"!!document.querySelector('#content .cm-content')"));
+ await evaluate(main.id,"[...document.querySelectorAll('#doc-toolbar button')].find(b=>b.textContent==='Edit (e)').click();document.querySelector('#content .cm-content').focus()");
+ system('set frontmost to true\nkey code 125 using command down');
+ await wait(()=>evaluate(main.id,"document.querySelector('#content .cm-scroller').scrollTop>0"));
+ const mainEditorSamples=[];
+ for(let i=0;i<3;i++){
+  const sample=await evaluate(main.id,`(async()=>{
+   document.querySelector('#content .cm-content').focus();
+   const start=performance.now();document.execCommand('insertText',false,'x');
+   await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+   return {inputToPaintMs:performance.now()-start,dirty:document.querySelector('.file-state').classList.contains('dirty')};
+  })()`);
+  assert.equal(sample.dirty,true);mainEditorSamples.push(sample);
+ }
+ for(let i=0;i<3&&await evaluate(main.id,"document.querySelector('.file-state').classList.contains('dirty')");i++)await call("menu",{window:main.id,path:["Edit","Undo"]});
+ await wait(()=>evaluate(main.id,"!document.querySelector('.file-state').classList.contains('dirty')"));
  await evaluate(main.id,"document.querySelector('#add-project').click()");
  await wait(()=>system('get exists sheet 1 of window "Galley"')==="true");
  system('set frontmost to true\nkey code 53');
@@ -204,7 +224,7 @@ try {
   return false;
  });
  assert.equal((await fetch(service.origin+"/health")).status,200,"退出外壳不停止后台服务");
- const result={passed:true,directory,screenshots:shots,shellRSSKiB:Number(memory),nativeMenu:true,nativeKeyboard:true,nativeZoom:true,nativeFolderPicker:true,nativeFileSave:true,nativeFinderOpen:true,nativePreview:{bytes:Buffer.byteLength(performanceText),codeBlocks:1600,samples:nativePreview,input:"execCommand in real WKWebView; includes 150ms debounce, not an IME timing measurement"},nativeIME,singleInstance:true,backgroundServiceSurvives:true};
+ const result={passed:true,directory,screenshots:shots,shellRSSKiB:Number(memory),nativeMenu:true,nativeKeyboard:true,nativeZoom:true,nativeFolderPicker:true,nativeFileSave:true,nativeFinderOpen:true,nativeMainEditor:{bytes:Buffer.byteLength(mainEditorText),samples:mainEditorSamples,undoClean:true,input:"Native navigation, then execCommand in actual main-window CodeMirror; not an IME timing measurement"},nativePreview:{bytes:Buffer.byteLength(performanceText),codeBlocks:1600,samples:nativePreview,input:"execCommand in real WKWebView; includes 150ms debounce, not an IME timing measurement"},nativeIME,singleInstance:true,backgroundServiceSurvives:true};
  await writeFile(join(shots,"result.json"),JSON.stringify(result,null,2));console.log(JSON.stringify(result));
 } finally {
  connection?.destroy();if(child.exitCode===null)child.kill("SIGKILL");

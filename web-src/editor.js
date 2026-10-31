@@ -78,7 +78,6 @@ export function createScratchEditor(parent, { state, text, label, isMarkdown, on
 export function createFileEditor(parent, file, onSave, onChange, onPasteImages) {
   const access = new Compartment();
   let editable = !file.partial && /\.(md|markdown|mdx)$/i.test(file.path);
-  let original = file.content;
   const permissions = () => [EditorState.readOnly.of(!editable), EditorView.editable.of(editable)];
   const language = languageFor(file.path) || [];
   const view = new EditorView({
@@ -104,11 +103,12 @@ export function createFileEditor(parent, file, onSave, onChange, onPasteImages) 
       ],
     }),
   });
+  let saved = view.state.doc;
   return {
     get text() { return view.state.sliceDoc(); },
-    get dirty() { return view.state.sliceDoc() !== original; },
+    get dirty() { return !view.state.doc.eq(saved); },
     get editable() { return editable; },
-    markSaved(content) { original = content; onChange(); },
+    markSaved(content) { saved = view.state.toText(content); onChange(); },
     enable() { if (!file.partial) { editable = true; view.dispatch({ effects: access.reconfigure(permissions()) }); view.focus(); onChange(); } },
     goToLine(line) { const target = view.state.doc.line(Math.min(view.state.doc.lines, Math.max(1, line))); view.dispatch({ selection: { anchor: target.from }, effects: EditorView.scrollIntoView(target.from, { y: "center" }) }); },
     destroy() { view.destroy(); },
