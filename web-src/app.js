@@ -462,7 +462,7 @@ async function openFile(path, line = 1, offset = 0, initialView = defaultPreview
     preview = document.createElement("div"); preview.className = "reply-pane file-preview"; preview.dataset.paper = $("reply-pane").dataset.paper;
     const article = document.createElement("article"); article.className = "markdown-body"; preview.append(article); panes.append(preview);
     fileRenderer = createReplyRenderer(article, { summary: false, resolveImage: source => projectImage(api, currentFile.root, currentFile.path, source) });
-    refreshPreview = () => fileRenderer?.render(editor.text);
+    refreshPreview = () => { if (currentFile.view !== "source") fileRenderer?.render(editor.text); };
     const views = document.createElement("nav"); views.className = "segmented file-views"; views.setAttribute("aria-label", "Markdown view");
     const setView = view => {
       currentFile.view = view;
@@ -488,7 +488,7 @@ async function openFile(path, line = 1, offset = 0, initialView = defaultPreview
     status.classList.toggle("dirty", !!editor?.dirty);
     save.disabled = !editor?.dirty; edit.disabled = !!file.partial || !!editor?.editable;
     clearTimeout(filePreviewTimer);
-    if (refreshPreview) filePreviewTimer = setTimeout(refreshPreview, 150);
+    if (refreshPreview && currentFile.view !== "source") filePreviewTimer = setTimeout(refreshPreview, 150);
   }, run(async (images, insert) => {
     for (const image of images) {
       const data = await imageData(image);

@@ -1,10 +1,12 @@
-import { test } from "node:test";
+import { test, mock } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, mkdir, writeFile, rename } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
 import { startConsole } from "../src/server.ts";
+import fs from "node:fs/promises";
+import { syncBuiltinESMExports } from "node:module";
 
 test("workspace keeps index and working-tree changes separate, including special paths and unborn HEAD", async () => {
   const directory = await mkdtemp(join(tmpdir(), "review-workspace-"));
@@ -49,4 +51,51 @@ test("workspace keeps index and working-tree changes separate, including special
     assert.equal((await api("workspace-file", {group:"unstaged",path:"renamed.md"})).status, "Modified", "清空文件不是删除文件");
     git("checkout", "--detach"); assert.equal((await api("head")).branch, "");
   } finally { await service.close(); }
+});
+
+test("workspace file details do not read unrelated untracked files", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "review-workspace-reads-"));
+  const root = join(directory, "repo"); await mkdir(root);
+  const git = (...args: string[]) => execFileSync("git", ["-C", root, ...args], { encoding: "utf8" }).trim();
+  git("init", "-b", "main");
+  await writeFile(join(root, "tracked.txt"), "original\n"); git("add", ".");
+  git("-c", "user.name=Test", "-c", "user.email=test@example.test", "commit", "-m", "initial");
+  await writeFile(join(root, "tracked.txt"), "staged\n"); git("add", ".");
+  await writeFile(join(root, "tracked.txt"), "working\n");
+  for (let i = 0; i < 40; i++) await writeFile(join(root, `untracked-${i}.txt`), "untracked\n".repeat(100));
+  const service = await startConsole({ directory, token: "reads" });
+  const headers = { Authorization: "Bearer reads", "Content-Type": "application/json" };
+  const originalOpen = fs.open;
+  const opened: string[] = [];
+  const openMock = mock.method(fs, "open", (...args: Parameters<typeof fs.open>) => {
+    opened.push(String(args[0]));
+    return originalOpen(...args);
+  });
+  syncBuiltinESMExports();
+  try {
+    await fetch(service.origin + "/api/projects", { method: "POST", headers, body: JSON.stringify({ root }) });
+    for (const group of ["staged", "unstaged", "untracked"]) {
+      opened.length = 0;
+      const path = group === "untracked" ? "untracked-3.txt" : "tracked.txt";
+      const response = await fetch(service.origin + "/api/git/workspace-file?" + new URLSearchParams({ root, group, path }), { headers });
+      assert.equal(response.status, 200);
+      const file = await response.json();
+      assert.deepEqual([file.added, file.deleted], group === "untracked" ? [100, 0] : [1, 1]);
+      const expectedTarget = await fs.realpath(join(root, path));
+      const unrelated = opened.filter(file => file.includes("untracked-") && file !== expectedTarget);
+      assert.equal(unrelated.length, 0, `${group} 单文件详情不应读取其他未跟踪文件，实际读取 ${unrelated.length} 个`);
+      if (group === "untracked") assert.equal(opened.filter(file => file === expectedTarget).length, 1);
+    }
+    await writeFile(join(root, "binary.bin"), Buffer.from([0, 1, 2]));
+    const response = await fetch(service.origin + "/api/git/workspace-file?" + new URLSearchParams({ root, group: "untracked", path: "binary.bin" }), { headers });
+    const binary = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(binary.status, "Unavailable");
+    assert.equal(binary.countable, false);
+    assert.match(binary.notice, /Binary/);
+  } finally {
+    openMock.mock.restore();
+    syncBuiltinESMExports();
+    await service.close();
+  }
 });

@@ -201,7 +201,7 @@ try {
   await page.locator(".commit-row").first().click();
   const historicalRow = page.locator(".commit-file-row", { hasText: "README.md" });
   if (await historicalRow.getAttribute("aria-expanded") !== "true") await historicalRow.click();
-  await page.getByRole("button", { name: "Open file", exact: true }).click();
+  await historicalRow.locator("..").getByRole("button", { name: "Open file", exact: true }).click();
   await page.locator(".historical-file .cm-content[contenteditable=false]").waitFor();
   assert.match(await page.locator(".historical-file .cm-content").textContent(), /当前文件/);
   assert.doesNotMatch(await page.locator(".historical-file .cm-content").textContent(), /Agent 改动/);
@@ -272,7 +272,7 @@ try {
   const metadata15 = await measure();
   for (let i = 0; i < 12; i++) {
     await page.locator(".project").nth(1).click();
-    await page.waitForFunction(() => document.querySelector("#document").textContent === "No reply yet");
+    await page.waitForFunction(() => document.querySelector("#document").textContent === "No replies yet");
     await page.locator(".project").first().click();
     await page.selectOption("#sessions", "a");
     await page.selectOption("#rounds", "r1");

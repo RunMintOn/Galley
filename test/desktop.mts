@@ -42,14 +42,14 @@ try {
  await wait(()=>system('get value of text field 1 of sheet 1 of sheet 1 of window "Galley"')===picked);
  system('key code 36');
  await wait(()=>system('get exists sheet 1 of sheet 1 of window "Galley"')==="false");
- system('click button "添加" of sheet 1 of window "Galley"');
+ system('click button "Add" of sheet 1 of window "Galley"');
  await wait(()=>evaluate(main.id,"document.querySelectorAll('.project').length===2"));
  assert.ok(await evaluate(main.id,`[...document.querySelectorAll('.project')].some(el=>el.title===${JSON.stringify(picked)})`));
  await call("menu",{window:main.id,path:["File","Markdown Editor"]});
  const scratch=await wait(async()=>(await call("windows")).windows.find(w=>w.id!==main.id));
  await wait(()=>evaluate(scratch.id,"!!window.reviewDesktop"));
  const raiseScratch=async()=>system('set frontmost to true\nperform action "AXRaise" of window '+JSON.stringify(await evaluate(scratch.id,"document.title")));
- await call("menu",{window:scratch.id,path:["File","新建 Markdown 标签"]});
+ await call("menu",{window:scratch.id,path:["File","New Markdown Tab"]});
  await wait(()=>evaluate(scratch.id,"document.querySelectorAll('[role=tab]').length===1"));
  const key=async(text,modifiers="")=>{
   await raiseScratch();
@@ -64,7 +64,7 @@ try {
  await evaluate(scratch.id,`document.querySelector('#scratch-source .cm-content').focus();document.execCommand('insertText',false,'# 中文内容');`);
  await wait(()=>evaluate(scratch.id,"document.querySelector('.scratch-preview h1')?.textContent === '中文内容'"));
  assert.equal(await evaluate(scratch.id,"document.querySelectorAll('.cm-lineNumbers').length"),1);
- await call("menu",{window:scratch.id,path:["File","新建 Diff 标签"]});
+ await call("menu",{window:scratch.id,path:["File","New Diff Tab"]});
  await wait(()=>evaluate(scratch.id,"document.querySelectorAll('[role=tab]').length===2"));
  await key("1","command down");
  await wait(()=>evaluate(scratch.id,"!!document.querySelector('#scratch-source')"));
@@ -82,7 +82,7 @@ try {
  await call("menu",{window:scratch.id,path:["Edit","Undo"]});
  await wait(()=>evaluate(scratch.id,`document.querySelector('#scratch-name').value===${JSON.stringify(oldName)}`));
  if(imeSource){
-  await call("menu",{window:scratch.id,path:["File","新建 Markdown 标签"]});
+  await call("menu",{window:scratch.id,path:["File","New Markdown Tab"]});
   await wait(()=>evaluate(scratch.id,"document.querySelectorAll('[role=tab]').length===3"));
   await evaluate(scratch.id,`document.querySelector('#scratch-source .cm-content').focus();window.imeEvents=[];window.imeComposing=false;for(const type of ['compositionstart','compositionupdate','compositionend'])document.addEventListener(type,e=>{imeComposing=type!=='compositionend';imeEvents.push({type,data:e.data})},true);`);
   await raiseScratch();
@@ -118,15 +118,15 @@ try {
  const sheets=action=>execFileSync("osascript",["-e",`tell application "System Events" to tell (first application process whose unix id is ${child.pid}) to ${action}`],{encoding:"utf8",timeout:5000}).trim();
  const retry=async(action)=>{for(let i=0;i<50;i++){try{return sheets(action)}catch{}await new Promise(r=>setTimeout(r,100))}throw new Error("窗口面板操作超时")};
  let scratchWindow=JSON.stringify(await evaluate(scratch.id,"document.title"));
- await call("menu",{window:scratch.id,path:["File","关闭窗口"]});
+ await call("menu",{window:scratch.id,path:["File","Close Window"]});
  // The modal sheet replaces the window's AX children for a moment; retry instead of assuming one frame.
  await wait(()=>sheets('get exists sheet 1 of window '+scratchWindow)==="true");
- await retry('click button "取消" of sheet 1 of window '+scratchWindow);
+ await retry('click button "Cancel" of sheet 1 of window '+scratchWindow);
  await new Promise(r=>setTimeout(r,200));
  assert.equal((await call("windows")).windows.length,2);
 
  // Save only test content into the isolated fixture directory.
- await call("menu",{window:scratch.id,path:["File","新建 Markdown 标签"]});
+ await call("menu",{window:scratch.id,path:["File","New Markdown Tab"]});
  await evaluate(scratch.id,"document.querySelector('#scratch-source .cm-content').focus();document.execCommand('insertText',false,'# Native save')");
  scratchWindow=JSON.stringify(await evaluate(scratch.id,"document.title"));
  await call("menu",{window:scratch.id,path:["File","Save File"]});
@@ -155,6 +155,35 @@ try {
  execFileSync("open",["-a",resolve("dist-desktop-test/Galley Test.app"),finderFile],{timeout:10000});
  await wait(()=>evaluate(scratch.id,"document.querySelector('#scratch-name')?.value==='finder.md'"));
  assert.equal(await evaluate(scratch.id,"document.querySelector('#scratch-source .cm-content').textContent"),"# Finder document");
+ const performanceFile=join(directory,"performance.md");
+ const performanceText="# Native performance\n\nintro\n\n```mermaid\nflowchart LR\n A --> B\n```\n\n"+
+  "## Section\n\n这是一段用于性能对照的 **正文**。\n\n```js\nfunction compute(value) { return value * 2; }\n```\n\n".repeat(1600);
+ await writeFile(performanceFile,performanceText);
+ execFileSync("open",["-a",resolve("dist-desktop-test/Galley Test.app"),performanceFile],{timeout:10000});
+ await wait(()=>evaluate(scratch.id,"document.querySelector('#scratch-name')?.value==='performance.md' && !!document.querySelector('.scratch-preview svg.pele')"));
+ await evaluate(scratch.id,"window.performanceDiagram=document.querySelector('.scratch-preview svg.pele')");
+ const nativePreview=[];
+ for(let i=0;i<3;i++){
+  await evaluate(scratch.id,`(()=>{
+   window.previewSample=null;
+   const article=document.querySelector('.scratch-preview article');
+   document.querySelector('#scratch-source .cm-content').focus();
+   const start=performance.now();
+   const observer=new MutationObserver(()=>{
+    observer.disconnect();
+    requestAnimationFrame(()=>requestAnimationFrame(()=>{
+     window.previewSample={paintOpportunityMs:performance.now()-start,preservedDiagram:performanceDiagram===document.querySelector('.scratch-preview svg.pele')};
+    }));
+   });
+   observer.observe(article,{childList:true,subtree:true});
+   document.execCommand('insertText',false,'x');
+  })()`);
+  await wait(()=>evaluate(scratch.id,"window.previewSample"));
+  const sample=await evaluate(scratch.id,"window.previewSample");nativePreview.push(sample);
+  assert.equal(sample.preservedDiagram,true,"WKWebView 正文编辑保留未变化的图表");
+ }
+ await call("menu",{window:scratch.id,path:["File","Save File"]});
+ await wait(()=>evaluate(scratch.id,"document.querySelector('#scratch-status').textContent==='Saved'"));
  scratchWindow=JSON.stringify(await evaluate(scratch.id,"document.title"));
  const focus=service.origin+"/#"+new URLSearchParams({token:service.token,session:"desktop-test",root});
  execFileSync(app,[focus],{env:{...process.env,REVIEW_CONSOLE_STATE:state,REVIEW_CONSOLE_DESKTOP_TEST:"1",MYGO_AUTOMATION:""},timeout:10000});
@@ -171,11 +200,11 @@ try {
  await call("menu",{window:main.id,path:["File","Quit Galley"]});
  await wait(()=>{
   if(child.exitCode!==null)return true;
-  if(sheets('get exists sheet 1 of window '+scratchWindow)==="true")sheets('click button "不保存" of sheet 1 of window '+scratchWindow);
+  if(sheets('get exists sheet 1 of window '+scratchWindow)==="true")sheets('click button "Don\'t Save" of sheet 1 of window '+scratchWindow);
   return false;
  });
  assert.equal((await fetch(service.origin+"/health")).status,200,"退出外壳不停止后台服务");
- const result={passed:true,directory,screenshots:shots,shellRSSKiB:Number(memory),nativeMenu:true,nativeKeyboard:true,nativeZoom:true,nativeFolderPicker:true,nativeFileSave:true,nativeFinderOpen:true,nativeIME,singleInstance:true,backgroundServiceSurvives:true};
+ const result={passed:true,directory,screenshots:shots,shellRSSKiB:Number(memory),nativeMenu:true,nativeKeyboard:true,nativeZoom:true,nativeFolderPicker:true,nativeFileSave:true,nativeFinderOpen:true,nativePreview:{bytes:Buffer.byteLength(performanceText),codeBlocks:1600,samples:nativePreview,input:"execCommand in real WKWebView; includes 150ms debounce, not an IME timing measurement"},nativeIME,singleInstance:true,backgroundServiceSurvives:true};
  await writeFile(join(shots,"result.json"),JSON.stringify(result,null,2));console.log(JSON.stringify(result));
 } finally {
  connection?.destroy();if(child.exitCode===null)child.kill("SIGKILL");

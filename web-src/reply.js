@@ -66,6 +66,7 @@ async function copyCodeBlock(copy) {
   }, 1600);
 }
 const defaultFence = markdown.renderer.rules.fence;
+let codeCache = new Map(), nextCodeCache;
 markdown.renderer.rules.fence = (tokens, index, options, env, renderer) => {
   const token = tokens[index];
   const language = token.info.trim().split(/\s+/)[0].toLowerCase();
@@ -74,8 +75,10 @@ markdown.renderer.rules.fence = (tokens, index, options, env, renderer) => {
     return `<div class="function-plot-block" data-plot="${plotIndex}"></div>\n`;
   }
   if (!enhanced || language !== "mermaid") {
-    const rendered = defaultFence(tokens, index, options, env, renderer);
-    return wrapCodeBlock(rendered, language, token.content);
+    const key = token.info + "\0" + token.content;
+    if (!nextCodeCache.has(key)) nextCodeCache.set(key, codeCache.get(key) ??
+      wrapCodeBlock(defaultFence(tokens, index, options, env, renderer), language, token.content));
+    return nextCodeCache.get(key);
   }
   const diagramIndex = /** @type {{diagrams: string[]}} */ (env).diagrams.push(token.content) - 1;
   return `<div class="mermaid-diagram" data-diagram="${diagramIndex}"></div>\n`;
@@ -123,23 +126,51 @@ function wrapCodeBlock(html, language, code) {
 }
 
 
-let mounted=[];
-function render(text) {
-
-  mounted.forEach((item) => item.destroy());
-  mounted = [];
-  preview.replaceChildren();
-  preview.dataset.state = text ? "rendering" : "idle";
-  if (!text) return;
-
-  const env = { diagrams: [], plots: [] };
-  if (enhanced && detectType(text)) {
-    env.diagrams.push(text);
-    preview.innerHTML = '<div class="mermaid-diagram" data-diagram="0"></div>';
-  } else {
-    preview.innerHTML = markdown.render(text, env);
+let blocks = [], appearance = "", diagramId = 0, currentText = "", summaryPending = false;
+const summary = document.createElement("p");
+summary.className = "docmeta";
+function updateSummary() {
+  summaryPending = false;
+  if (!showSummary || !currentText) return;
+  summary.remove();
+  const words = (preview.textContent.match(/[\u4e00-\u9fa5]|[a-zA-Z]+/g) || []).length;
+  const diagrams = blocks.reduce((n, block) => n + block.diagrams.length, 0);
+  const plots = blocks.reduce((n, block) => n + block.plots.length, 0);
+  const failed = blocks.reduce((n, block) => n + block.failed.size, 0);
+  const parts = [];
+  if (diagrams) parts.push(`${diagrams} diagram${diagrams > 1 ? "s" : ""}`);
+  if (plots) parts.push(`${plots} plot${plots > 1 ? "s" : ""}`);
+  if (preview.querySelector(".katex")) parts.push("math");
+  if (words) parts.push(`${words} words`);
+  if (failed) parts.push(`${failed} failed`);
+  const swatch = document.createElement("span"); swatch.className = "swatch"; swatch.setAttribute("aria-hidden", "true");
+  summary.replaceChildren(swatch);
+  for (const text of parts) {
+    const item = document.createElement("span"); item.textContent = text;
+    if (summary.childElementCount > 1) {
+      const rule = document.createElement("span"); rule.className = "rule"; rule.setAttribute("aria-hidden", "true");
+      summary.append(rule);
+    }
+    summary.append(item);
   }
-  if (resolveImage) preview.querySelectorAll("img").forEach(img => {
+  summary.dataset.state = failed ? "failed" : "done";
+  const h1 = preview.querySelector("h1");
+  if (h1) h1.after(summary); else preview.prepend(summary);
+}
+function updateStatus() {
+  preview.dataset.state = !currentText ? "idle" : blocks.some(block => block.failed.size) ? "failed" : "done";
+  if (showSummary && !summaryPending) { summaryPending = true; queueMicrotask(updateSummary); }
+}
+function removeBlock(block) {
+  block.alive = false;
+  block.mounted.forEach(item => item.destroy());
+  block.nodes.forEach(node => node.remove());
+}
+function mountBlock(block, before) {
+  const template = document.createElement("template");
+  template.innerHTML = block.html;
+  const fragment = template.content;
+  if (resolveImage) fragment.querySelectorAll("img").forEach(img => {
     const source = img.getAttribute("src");
     if (/^(https?:|data:|blob:)/i.test(source)) return;
     img.removeAttribute("src");
@@ -150,7 +181,7 @@ function render(text) {
     });
   });
   // Only isolated inline path tokens become links; code blocks remain literal.
-  preview.querySelectorAll("code:not(pre code)").forEach(code => {
+  fragment.querySelectorAll("code:not(pre code)").forEach(code => {
     if (code.closest("a")) return;
     const path = code.textContent;
     if (!/^(?:\.{0,2}\/)?[^\s<>`]+\.(?:md|mdx|markdown|[cm]?[jt]sx?|json|go|py|rs|css|html|ya?ml|toml|sh|txt)(?::\d+(?::\d+)?)?(?:#L\d+)?$/i.test(path)) return;
@@ -158,77 +189,96 @@ function render(text) {
     code.replaceWith(link); link.append(code);
   });
 
-  const failed = new Set();
-  const summary = document.createElement("p");
-  summary.className = "docmeta";
-  // Migrated from VisualReply: derive the reading summary from rendered content.
-  function updateSummary() {
-    if (!showSummary) return;
-    const body = preview.cloneNode(true);
-    body.querySelector(".docmeta")?.remove();
-    const words = (body.textContent.match(/[\u4e00-\u9fa5]|[a-zA-Z]+/g) || []).length;
-    const parts = [];
-    if (env.diagrams.length) parts.push(`${env.diagrams.length} diagram${env.diagrams.length > 1 ? "s" : ""}`);
-    if (env.plots.length) parts.push(`${env.plots.length} plot${env.plots.length > 1 ? "s" : ""}`);
-    if (preview.querySelector(".katex")) parts.push("math");
-    if (words) parts.push(`${words} words`);
-    if (failed.size) parts.push(`${failed.size} failed`);
-    const swatch = document.createElement("span"); swatch.className = "swatch"; swatch.setAttribute("aria-hidden", "true");
-    summary.replaceChildren(swatch);
-    for (const text of parts) {
-      const item = document.createElement("span"); item.textContent = text;
-      if (summary.childElementCount > 1) {
-        const rule = document.createElement("span"); rule.className = "rule"; rule.setAttribute("aria-hidden", "true");
-        summary.append(rule);
-      }
-      summary.append(item);
-    }
-    summary.dataset.state = failed.size ? "failed" : "done";
-    const h1 = preview.querySelector("h1");
-    if (h1) h1.after(summary); else preview.prepend(summary);
-  }
-  const updateStatus = () => {
-    preview.dataset.state = failed.size ? "failed" : "done";
-    updateSummary();
-  };
-  preview.querySelectorAll("[data-diagram]").forEach((container, index) => {
-    mounted.push(mount(/** @type {HTMLElement} */ (container), env.diagrams[index], {
-      idPrefix: `diagram-${index}-`,
+  const diagrams = [...fragment.querySelectorAll("[data-diagram]")];
+  const plots = [...fragment.querySelectorAll("[data-plot]")];
+  block.nodes = [...fragment.childNodes];
+  preview.insertBefore(fragment, before);
+  diagrams.forEach((container, index) => {
+    block.mounted.push(mount(/** @type {HTMLElement} */ (container), block.diagrams[index], {
+      idPrefix: `diagram-${diagramId++}-`,
       zoom: {
         always: true,
         labels: { zoomIn: "Zoom in", zoomOut: "Zoom out", reset: "Fit to view" },
       },
       onRender: () => {
+        if (!block.alive) return;
         adjustDiagramContrast(container);
         container.classList.remove("diagram-error");
-        failed.delete(index);
+        block.failed.delete(container);
         updateStatus();
       },
       onError: (reason) => {
+        if (!block.alive) return;
         const error = document.createElement("pre");
         error.setAttribute("role", "alert");
         error.textContent = String(reason);
         container.replaceChildren(error);
         container.classList.add("diagram-error");
-        failed.add(index);
+        block.failed.add(container);
         updateStatus();
       },
     }));
   });
-  preview.querySelectorAll("[data-plot]").forEach((container, index) => {
-    mounted.push(mountPlot(container, env.plots[index], (reason) => {
+  plots.forEach((container, index) => {
+    block.mounted.push(mountPlot(container, block.plots[index], (reason) => {
+      if (!block.alive) return;
       const error = document.createElement("pre");
       error.setAttribute("role", "alert");
       error.textContent = `Could not render plot: ${String(reason)}`;
       container.replaceChildren(error);
       container.classList.add("diagram-error");
-      failed.add(`plot-${index}`);
+      block.failed.add(container);
       updateStatus();
     }));
   });
+}
+
+function render(text) {
+  currentText = text;
+  summary.remove();
+  nextCodeCache = new Map();
+  const next = [];
+  const env = {};
+  const append = html => next.push({ html, diagrams: env.diagrams, plots: env.plots, mounted: [], nodes: [], failed: new Set(), alive: true });
+  if (text && enhanced && detectType(text)) {
+    env.diagrams = [text]; env.plots = [];
+    append('<div class="mermaid-diagram" data-diagram="0"></div>');
+  } else if (text) {
+    // Parse the whole document so references and footnotes remain global. Render
+    // balanced top-level token groups so unchanged DOM can stay mounted.
+    const tokens = markdown.parse(text, env);
+    for (let start = 0; start < tokens.length;) {
+      let end = start, depth = 0;
+      do { depth += tokens[end++].nesting; } while (depth > 0 && end < tokens.length);
+      env.diagrams = []; env.plots = [];
+      append(markdown.renderer.render(tokens.slice(start, end), markdown.options, env));
+      start = end;
+    }
+  }
+  codeCache = nextCodeCache;
+  const same = (a, b) => a.html === b.html &&
+    a.diagrams.length === b.diagrams.length && a.diagrams.every((text, i) => text === b.diagrams[i]) &&
+    a.plots.length === b.plots.length && a.plots.every((text, i) => text === b.plots[i]);
+  const theme = `${document.documentElement.classList.contains("dark")}:${document.documentElement.dataset.font}:${preview.closest("[data-paper]")?.dataset.paper}`;
+  let prefix = 0, suffix = 0;
+  if (theme === appearance) {
+    while (prefix < blocks.length && prefix < next.length && same(blocks[prefix], next[prefix])) prefix++;
+    while (suffix < blocks.length - prefix && suffix < next.length - prefix &&
+      same(blocks[blocks.length - suffix - 1], next[next.length - suffix - 1])) suffix++;
+  }
+  appearance = theme;
+  const previous = blocks;
+  for (let i = 0; i < prefix; i++) next[i] = previous[i];
+  for (let i = 0; i < suffix; i++) next[next.length - i - 1] = previous[previous.length - i - 1];
+  previous.slice(prefix, previous.length - suffix).forEach(removeBlock);
+  blocks = next;
+  const before = suffix ? next[next.length - suffix].nodes[0] : null;
+  for (let i = prefix; i < next.length - suffix; i++) mountBlock(next[i], before);
   updateStatus();
 }
 
-
-return {render, destroy(){mounted.forEach(item=>item.destroy());mounted=[];preview.replaceChildren();}};
+return { render, destroy() {
+  currentText = "";
+  blocks.forEach(removeBlock); blocks = []; codeCache.clear(); summary.remove(); preview.replaceChildren();
+} };
 }

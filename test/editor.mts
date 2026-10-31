@@ -33,7 +33,7 @@ test("file-tree Markdown previews images, honors the default, and keeps reply co
     await page.locator(".file-preview h1").waitFor();
     assert.equal(await page.locator(".file-preview h1").innerText(), "Skill");
     await page.waitForFunction(() => document.querySelector(".file-preview img")?.naturalWidth === 1);
-    assert.equal(await page.locator("#document").innerText(), "No reply yet");
+    assert.equal(await page.locator("#document").innerText(), "No replies yet");
     await page.click("#settings-menu > summary");
     await page.locator("#settings-menu .popover").screenshot({ path: "test-results/editor/preview-options.png" });
     await page.click('label.check:has(#default-preview)');
@@ -49,6 +49,24 @@ test("file-tree Markdown previews images, honors the default, and keeps reply co
     await page.click('[data-setting="theme"] [data-value="light"]');
     await page.click("#settings-menu > summary");
     await page.screenshot({ path: "test-results/editor/review-light.png" });
+  } finally { await context.close(); }
+});
+
+test("file source mode does not render a hidden preview and shows the latest draft when reopened", async () => {
+  const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  const page = await context.newPage();
+  try {
+    await page.goto(service.origin + "/#token=editor");
+    await page.locator('#tree [data-path="SKILL.md"]').click();
+    await page.locator('.file-views [data-view="split"]').click();
+    await page.locator(".file-preview h1").waitFor();
+    await page.locator('.file-views [data-view="source"]').click();
+    await page.getByRole("textbox", { name: "File content", exact: true }).fill("# Latest draft\n");
+    // The previous implementation schedules a hidden render after 150ms.
+    await page.waitForTimeout(250);
+    assert.equal(await page.locator(".file-preview h1").textContent(), "Skill");
+    await page.locator('.file-views [data-view="preview"]').click();
+    assert.equal(await page.locator(".file-preview h1").textContent(), "Latest draft");
   } finally { await context.close(); }
 });
 

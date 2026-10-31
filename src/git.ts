@@ -108,16 +108,25 @@ export async function gitQuery(store: Store, operation: string, params: URLSearc
   };
   if (operation === "head") return head();
   if (operation === "workspace" || operation === "workspace-file") {
+    const group = params.get("group"), path = params.get("path") || "";
     const current = await head();
     const base = current.hash || (await execute(top, ["hash-object", "-t", "tree", "--stdin"])).toString().trim();
     const groups = [];
     for (const [id, args] of [["staged", ["--cached", base]], ["unstaged", []]] as const) {
+      if (operation === "workspace-file" && id !== group) continue;
       const files = numstat((await execute(top, ["diff", "--no-ext-diff", "--no-textconv", "--numstat", "-z", prefix ? "--no-renames" : "-M", ...args])).toString());
       groups.push({ id, files, ...totals(files) });
     }
-    const paths = (await execute(top, ["ls-files", "--others", "--exclude-standard", "-z"])).toString().split("\0").filter(p => p && scoped(p) && visible(p));
+    const paths = operation === "workspace-file" && group !== "untracked" ? []
+      : (await execute(top, ["ls-files", "--others", "--exclude-standard", "-z"])).toString().split("\0").filter(p => p && scoped(p) && visible(p));
     const untracked = [];
     for (const path of paths.slice(0, 500)) {
+      if (operation === "workspace-file") {
+        if (group === "untracked" && display(path) === params.get("path")) {
+          untracked.push({ path: display(path), beforePath: path, afterPath: path, added: 0, deleted: 0, countable: true });
+        }
+        continue;
+      }
       try {
         const text = await readText(store, root, display(path));
         if (text.partial) throw new Error("File exceeds the text preview limit");
@@ -130,7 +139,6 @@ export async function gitQuery(store: Store, operation: string, params: URLSearc
       const files = groups.flatMap(g => g.files);
       return { ...current, groups, count: new Set(files.map(f => f.path)).size, ...totals(files), truncated: paths.length > 500 };
     }
-    const group = params.get("group"), path = params.get("path") || "";
     const entry = groups.find(g => g.id === group)?.files.find(f => f.path === path);
     if (!entry) throw new ConsoleError("The working-tree diff changed; refresh and retry", 404);
     const file: ChangedFile & { countable: boolean } = { path, status: "Modified", added: entry.added, deleted: entry.deleted, countable: entry.countable };
