@@ -1,8 +1,6 @@
 import * as Diff from "diff";
 import { highlightTree, tagHighlighter, tags } from "@lezer/highlight";
-import { javascript, javascriptLanguage } from "@codemirror/lang-javascript";
-import { markdownLanguage } from "@codemirror/lang-markdown";
-import { goLanguage } from "@codemirror/lang-go";
+import { languageFor } from "./languages.js";
 
 const highlight = tagHighlighter([
   { tag: [tags.keyword, tags.modifier, tags.operatorKeyword, tags.controlKeyword, tags.definitionKeyword, tags.moduleKeyword], class: "tk-k" },
@@ -16,20 +14,7 @@ const highlight = tagHighlighter([
   { tag: [tags.meta, tags.processingInstruction], class: "tk-c" },
 ]);
 
-const parsers = new Map();
 const escape = text => text.replace(/[&<>]/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[char]);
-function parserFor(path) {
-  const ext = path.split(".").at(-1).toLowerCase();
-  const language = { js: "js", mjs: "js", cjs: "js", jsx: "jsx", ts: "ts", tsx: "tsx", md: "md", markdown: "md", mdx: "md", go: "go" }[ext];
-  if (!language) return null;
-  if (!parsers.has(language)) {
-    parsers.set(language, language === "go" ? goLanguage.parser
-      : language === "md" ? markdownLanguage.parser
-      : language === "js" ? javascriptLanguage.parser
-      : javascript({ typescript: language === "ts" || language === "tsx", jsx: language === "jsx" || language === "tsx" }).language.parser);
-  }
-  return parsers.get(language);
-}
 
 function tokenize(text, parser) {
   if (!parser) return [];
@@ -85,9 +70,9 @@ function lineHTML(text, tokens, marks) {
 
 // Rendering core migrated from compact-tool; the container owns all listeners.
 export function mountDiff(root, file, onOpen, { initialLayout = "unified", toolbar, hideHead = false } = {}) {
-  let layout = initialLayout;
+  let layout = localStorage.getItem("review-diff-layout") || initialLayout;
   let hunkId = 0, foldId = 0;
-  const parser = parserFor(file.path);
+  const parser = languageFor(file.path)?.language.parser;
   // src/diff.ts already stripped the +/-/space marker, so content is the raw line.
   const lineText = line => line.content ?? "";
   const tokenCache = new Map();
@@ -249,9 +234,8 @@ export function mountDiff(root, file, onOpen, { initialLayout = "unified", toolb
     const b = event.target.closest("button");
     if (!b) return;
     if (b.dataset.layout) {
-      layout = b.dataset.layout;
-      if (layout === "split") { controls.querySelector("[data-wrap]").checked = true; diffs.classList.remove("nowrap"); }
-      render();
+      localStorage.setItem("review-diff-layout", b.dataset.layout);
+      window.dispatchEvent(new Event("review-diff-preferences"));
     }
     if (b.hasAttribute("data-open") && onOpen) onOpen(file.path);
     if (b.dataset.fold) {
@@ -263,12 +247,32 @@ export function mountDiff(root, file, onOpen, { initialLayout = "unified", toolb
   }
   root.addEventListener("click", action);
   controls.addEventListener("click", action);
-  controls.querySelector("[data-wrap]").onchange = event => diffs.classList.toggle("nowrap", !event.target.checked);
+  function applyPreferences() {
+    const savedLayout = localStorage.getItem("review-diff-layout") || initialLayout;
+    if (savedLayout !== layout) { layout = savedLayout; render(); }
+    const wrap = localStorage.getItem("review-diff-wrap") !== "false";
+    controls.querySelector("[data-wrap]").checked = wrap;
+    diffs.classList.toggle("nowrap", !wrap);
+  }
+  const onStorage = event => {
+    if (event.key === "review-diff-layout" || event.key === "review-diff-wrap") applyPreferences();
+  };
+  controls.querySelector("[data-wrap]").onchange = event => {
+    localStorage.setItem("review-diff-wrap", String(event.target.checked));
+    window.dispatchEvent(new Event("review-diff-preferences"));
+  };
+  window.addEventListener("review-diff-preferences", applyPreferences);
+  window.addEventListener("storage", onStorage);
   render();
+  applyPreferences();
   return {
     nav,
     controls,
-    destroy() { root.removeEventListener("click", action); controls.removeEventListener("click", action); controls.remove(); },
+    destroy() {
+      root.removeEventListener("click", action); controls.removeEventListener("click", action);
+      window.removeEventListener("review-diff-preferences", applyPreferences); window.removeEventListener("storage", onStorage);
+      controls.remove();
+    },
     goToLine(line) {
       const row = [...diffs.querySelectorAll("tr")].find(r => Number(r.querySelectorAll(".ln")[1]?.textContent) === line);
       row?.scrollIntoView({ block: "center" });

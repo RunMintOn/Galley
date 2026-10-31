@@ -4,8 +4,8 @@ import { defaultKeymap, history, historyKeymap, indentWithTab, undo, redo } from
 import { syntaxHighlighting, HighlightStyle } from "@codemirror/language";
 import { tags } from "@lezer/highlight";
 import { search, searchKeymap, openSearchPanel } from "@codemirror/search";
-import { javascript } from "@codemirror/lang-javascript";
 import { markdown } from "@codemirror/lang-markdown";
+import { languageFor } from "./languages.js";
 
 const editorTheme = EditorView.theme({
   "&": { height: "100%", backgroundColor: "var(--editor-bg)", color: "var(--editor-ink)", fontSize: "13px" },
@@ -27,9 +27,9 @@ const editorHighlight = HighlightStyle.define([
   { tag: tags.strong, color: "var(--syntax-orange)", fontWeight: "600" },
   { tag: tags.emphasis, fontStyle: "italic" },
   { tag: [tags.string, tags.link, tags.url], color: "var(--syntax-green)" },
-  { tag: [tags.monospace, tags.number, tags.atom], color: "var(--syntax-orange)" },
+  { tag: [tags.monospace, tags.number, tags.atom, tags.bool, tags.null], color: "var(--syntax-orange)" },
   { tag: [tags.comment, tags.meta], color: "var(--subtle)" },
-  { tag: [tags.function(tags.variableName), tags.typeName], color: "var(--syntax-blue)" },
+  { tag: [tags.function(tags.variableName), tags.function(tags.propertyName), tags.typeName, tags.tagName, tags.attributeName], color: "var(--syntax-blue)" },
 ]);
 const editing = [drawSelection(), search({ top: true }), keymap.of(searchKeymap), syntaxHighlighting(editorHighlight), editorTheme];
 
@@ -80,7 +80,7 @@ export function createFileEditor(parent, file, onSave, onChange, onPasteImages) 
   let editable = !file.partial && /\.(md|markdown|mdx)$/i.test(file.path);
   let original = file.content;
   const permissions = () => [EditorState.readOnly.of(!editable), EditorView.editable.of(editable)];
-  const language = /\.(md|markdown|mdx)$/i.test(file.path) ? markdown() : /\.[cm]?[jt]sx?$/i.test(file.path) ? javascript({ typescript: /\.tsx?$/.test(file.path), jsx: /\.[jt]sx$/.test(file.path) }) : [];
+  const language = languageFor(file.path) || [];
   const view = new EditorView({
     parent,
     state: EditorState.create({

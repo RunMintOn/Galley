@@ -3,7 +3,8 @@ import { createReplyRenderer } from "./reply.js";
 import { createFileEditor, editHistory, findInEditor } from "./editor.js";
 import { showGitHistory } from "./git-view.js";
 import { setupTheme, setupPreviewPreference, defaultPreview } from "./theme.js";
-import { imageData, projectImage, relativeFilePath } from "./images.js";
+import { imageData, projectImage, relativeFilePath, isImagePath, imagePreview } from "./images.js";
+import { createFileExplorer } from "./file-explorer.js";
 
 const $ = id => document.getElementById(id);
 const params = new URLSearchParams(location.hash.slice(1));
@@ -16,7 +17,7 @@ let renderer = createReplyRenderer($("document"));
 let diff;
 const positions = new Map();
 let renderTimer;
-let editor, currentFile;
+let editor, currentFile, removedFile;
 let fileRenderer, filePreviewTimer;
 let savingFile = false;
 let sourceOpen = false;
@@ -26,6 +27,8 @@ let reconnectTimer, stopped = false, inputSession = "", sending = false, tempora
 const drafts = new Map();
 const projectSessions = new Map();
 const branches = new Map();
+const pendingBranches = new Set();
+let contextProject;
 let changedTree = false;
 let foreground = document.visibilityState === "visible" && document.hasFocus();
 const expanded = new Set([""]);
@@ -73,7 +76,17 @@ function setSource(open) {
   } else restoreContentHeader();
   $("show-source").setAttribute("aria-pressed", String(open));
 }
-export function notice(message) { $("notice").textContent = message; }
+export function notice(message, action) {
+  $("notice-text").textContent = message;
+  $("notice").hidden = !message;
+  $("notice-undo").hidden = !action;
+  $("notice-undo").textContent = action?.label || "Undo";
+  $("notice-undo").onclick = action ? run(async () => {
+    $("notice-undo").disabled = true;
+    try { await action.run(); } finally { $("notice-undo").disabled = false; }
+  }) : null;
+}
+$("notice-close").onclick = () => { $("notice").hidden = true; };
 export async function api(path, body, method = body === undefined ? "GET" : "POST") {
   const response = await fetch("/api/" + path, {
     method, headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
@@ -95,14 +108,13 @@ function counts(added, deleted) {
   });
 }
 const MARKDOWN_EXT = new Set(["md", "markdown", "mdx"]);
-const IMAGE_EXT = new Set(["png", "jpg", "jpeg", "gif", "webp", "svg", "avif", "bmp"]);
 const CONFIG_EXT = new Set(["json", "jsonc", "toml", "yaml", "yml", "ini", "conf", "cfg", "mod", "sum", "lock", "env"]);
 const CODE_EXT = new Set(["js", "mjs", "cjs", "jsx", "ts", "tsx", "go", "py", "rb", "rs", "java", "c", "h", "cc", "cpp", "hpp", "cs", "swift", "kt", "php", "sh", "bash", "zsh", "fish", "css", "scss", "less", "html", "htm", "xml", "sql", "lua", "r", "ex", "exs", "vue", "svelte"]);
 function fileType(path) {
   const name = path.split("/").at(-1).toLowerCase();
   const ext = name.includes(".") ? name.split(".").at(-1) : "";
   if (MARKDOWN_EXT.has(ext)) return "markdown";
-  if (IMAGE_EXT.has(ext)) return "image";
+  if (isImagePath(path)) return "image";
   if (CONFIG_EXT.has(ext) || ["go.mod", "go.sum", "dockerfile", "makefile", ".env"].includes(name)) return "config";
   if (CODE_EXT.has(ext)) return "code";
   return null;
@@ -150,7 +162,7 @@ function contentHeader(name = "", stats) {
 }
 function updateReplyContext() {
   const heading = $("document").querySelector("h1, h2, h3");
-  const title = heading?.textContent.trim() || session()?.title || "No reply";
+  const title = $("document").querySelector(".reply-empty") ? "" : heading?.textContent.trim() || session()?.title || "";
   $("reply-title").textContent = title;
   $("reply-title").title = title;
 }
@@ -158,37 +170,54 @@ function projectLocation(root) {
   const parts = root.split("/").filter(Boolean);
   return parts.length > 2 ? "…/" + parts.slice(-2).join("/") : root;
 }
+function refreshBranch(root) {
+  if (!root || pendingBranches.has(root)) return;
+  pendingBranches.add(root);
+  api("git/head?" + new URLSearchParams({ root })).then(data => {
+    branches.set(root, data.label || null);
+  }).catch(() => {
+    branches.set(root, null);
+  }).finally(() => { pendingBranches.delete(root); renderProjects(); });
+}
 function renderProjects() {
   $("project-count").textContent = state.projects.length;
   $("move-project").disabled = state.projects.findIndex(p => p.root === state.root) <= 0;
   $("remove-project").disabled = !state.root;
-  $("projects").replaceChildren(...state.projects.map(p => {
+  for (const id of ["new-file", "new-folder", "find-file", "collapse-tree"]) $(id).disabled = !state.root;
+  const existing = new Map([...$("projects").children].map(row => [row.dataset.root, row]));
+  const rows = state.projects.map(p => {
     const related = state.sessions.filter(s => s.root === p.root);
     const selected = related.find(s => s.id === (p.root === state.root ? state.session : projectSessions.get(p.root))) || related.at(-1);
     const working = related.some(s => s.state === "working");
-    const b = button("", () => chooseProject(p.root), "project");
+    const b = existing.get(p.root) || button("", () => chooseProject(p.root), "project");
+    b.dataset.root = p.root;
     b.setAttribute("aria-current", String(p.root === state.root)); b.title = p.root;
+    b.oncontextmenu = event => {
+      event.preventDefault();
+      contextProject = p.root;
+      $("project-context").hidden = false;
+      $("project-context").style.left = Math.min(event.clientX, innerWidth - $("project-context").offsetWidth) + "px";
+      $("project-context").style.top = Math.min(event.clientY, innerHeight - $("project-context").offsetHeight) + "px";
+      $("context-remove-project").focus();
+    };
     const dot = document.createElement("span");
     dot.className = "project-dot" + (working ? " working" : "");
     dot.title = working ? "Working" : "";
     const label = document.createElement("span"); label.className = "project-name"; label.textContent = p.name;
     const meta = document.createElement("span"); meta.className = "project-meta";
-    if (!branches.has(p.root)) {
-      branches.set(p.root, null);
-      api("git/head?" + new URLSearchParams({ root: p.root })).then(data => {
-        branches.set(p.root, data.label || null); renderProjects();
-      }).catch(() => {
-        branches.set(p.root, null); renderProjects();
-      });
-    }
+    if (!branches.has(p.root)) refreshBranch(p.root);
     const branch = branches.get(p.root);
     if (branch) { const span = document.createElement("span"); span.className = "branch"; span.textContent = branch; span.title = branch; meta.append(span); }
     const count = selected?.rounds.at(-1)?.count ?? 0;
     if (count > 0) { const chip = document.createElement("span"); chip.className = "project-count"; chip.textContent = count; meta.append(chip); }
     const path = document.createElement("span"); path.className = "project-path"; path.textContent = projectLocation(p.root);
-    b.append(dot, label, meta, path);
+    b.replaceChildren(dot, label, meta, path);
     return b;
-  }));
+  });
+  for (const row of existing.values()) if (!rows.includes(row)) row.remove();
+  rows.forEach((row, index) => {
+    if ($("projects").children[index] !== row) $("projects").insertBefore(row, $("projects").children[index] || null);
+  });
 }
 async function refresh() {
   const previousLatest = session()?.rounds.at(-1)?.id;
@@ -198,6 +227,7 @@ async function refresh() {
   if (!state.projects.some(p => p.root === state.root)) state.root = state.sessions.find(s => s.id === state.session)?.root || state.projects[0]?.root || "";
   if (!state.sessions.some(s => s.id === state.session && s.root === state.root)) state.session = state.sessions.filter(s => s.root === state.root).at(-1)?.id || "";
   const selected = session();
+  $("reply-pane").querySelector(".reply-navigation").hidden = !selected;
   if (selected) projectSessions.set(state.root, selected.id);
   const latest = selected?.rounds.at(-1)?.id || "";
   const wasFollowing = !editor && !temporaryPreview && !sourceOpen && (!state.round || state.round === previousLatest);
@@ -233,7 +263,6 @@ async function chooseProject(root) {
   setSource(false);
   closeHistory();
   state.root = root; state.session = projectSessions.get(root) || ""; state.round = ""; state.data = null; state.mode = "turn";
-  expanded.clear(); expanded.add("");
   await refresh(); await loadTree(); updateWatch();
 }
 export function savePosition() {
@@ -260,20 +289,28 @@ $("add-project").onclick = run(async () => {
   await chooseProject(added.root);
 });
 document.addEventListener("click", e => {
+  $("project-context").hidden = true;
   for (const menu of document.querySelectorAll("details.menu[open]")) {
     if (!menu.contains(e.target) || (menu.id === "project-menu" && e.target.closest("button"))) menu.open = false;
   }
 });
-$("remove-project").onclick = run(async () => {
-  if (!state.root || !confirm("Remove this project from Galley? Files on disk are not deleted.")) return;
-  if (!leaveFile()) return;
-  setSource(false);
-  closeHistory();
-  expanded.clear(); expanded.add("");
-  await api("projects", { root: state.root }, "DELETE");
-  state.round = ""; state.data = null; state.mode = "turn";
-  await refresh(); await loadTree(); updateWatch();
-});
+async function removeProject(root) {
+  const current = root === state.root;
+  if (current) {
+    if (!leaveFile()) return;
+    setSource(false);
+    closeHistory();
+    expanded.clear(); expanded.add("");
+    state.round = ""; state.data = null; state.mode = "turn";
+  }
+  await api("projects", { root }, "DELETE");
+  await refresh();
+  if (current) { await loadTree(); updateWatch(); }
+}
+$("remove-project").onclick = run(() => removeProject(state.root));
+$("context-remove-project").onclick = run(() => removeProject(contextProject));
+$("context-reveal-project").onclick = run(() => api("files/system", { root: contextProject, action: "reveal" }));
+$("context-terminal-project").onclick = run(() => api("files/system", { root: contextProject, action: "terminal" }));
 $("move-project").onclick = run(async () => {
   const roots = state.projects.map(p => p.root); const at = roots.indexOf(state.root);
   if (at <= 0) return;
@@ -293,7 +330,8 @@ async function loadRound() {
   $("reply-source").value = "";
   if (!state.session || !state.round) {
     if (state.mode === "turn") { const empty = document.createElement("p"); empty.className = "empty"; empty.textContent = "This project has no round report yet. You can still browse files and history."; $("content").replaceChildren(empty); }
-    $("document").textContent = "No reply yet";
+    const empty = document.createElement("span"); empty.className = "reply-empty"; empty.textContent = "No replies yet";
+    $("document").replaceChildren(empty);
     updateReplyContext();
     return;
   }
@@ -320,7 +358,7 @@ function renderChanged() {
   list.classList.toggle("tree-mode", changedTree);
   const directories = new Map([["", list]]);
   for (const file of state.data?.report?.files || []) {
-    let parent = list, depth = 0;
+    let parent = list;
     if (changedTree) {
       let prefix = "";
       for (const part of file.path.split("/").slice(0, -1)) {
@@ -328,17 +366,14 @@ function renderChanged() {
         if (!directories.has(prefix)) {
           const folder = document.createElement("details"); folder.className = "tree-dir"; folder.open = true;
           const title = document.createElement("summary");
-          title.style.setProperty("--depth", String(depth));
-          title.innerHTML = '<svg class="icon"><use href="#i-chevron"/></svg>';
-          const label = document.createElement("span"); label.textContent = part + "/"; title.append(label);
+          title.innerHTML = '<svg class="icon"><use href="#i-folder"/></svg>';
+          const label = document.createElement("span"); label.textContent = part; title.append(label);
           const children = document.createElement("div"); folder.append(title, children); parent.append(folder); directories.set(prefix, children);
         }
         parent = directories.get(prefix);
-        depth += 1;
       }
     }
     const row = fileButton(file.path, () => showDiff(file), file);
-    if (changedTree) row.style.setProperty("--depth", String(depth));
     parent.append(row);
   }
   selectFile(state.file);
@@ -396,16 +431,23 @@ async function openFile(path, line = 1, offset = 0, initialView = defaultPreview
   setSource(false);
   closeHistory();
   const root = state.root, current = ++generation;
-  const file = await api(`file?root=${encodeURIComponent(root)}&path=${encodeURIComponent(path)}&offset=${offset}`);
+  const image = isImagePath(path);
+  const file = await api(`${image ? "image" : "file"}?root=${encodeURIComponent(root)}&path=${encodeURIComponent(path)}&offset=${offset}`);
   if (current !== generation || root !== state.root) return;
-  state.mode = "file"; currentFile = { ...file, root, line, view: initialView };
+  state.mode = "file"; currentFile = { ...file, path, root, line, view: initialView, image };
   state.file = path; contentHeader(path); selectFile(path);
   $("content-position").textContent = file.partial ? `Bytes ${file.offset} / ${file.size}` : "";
   const toolbar = $("doc-toolbar"); toolbar.hidden = false;
+  if (image) {
+    toolbar.append(button("Reload", () => openFile(currentFile.path)));
+    $("content").replaceChildren(imagePreview(file.url, path));
+    updateWatch();
+    return;
+  }
   const status = document.createElement("span"); status.className = "file-state";
   const edit = button("Edit (e)", () => editor?.enable());
   const save = button("Save ⌘S", saveFile);
-  const reload = button("Reload", () => openFile(path, line, offset, currentFile.view));
+  const reload = button("Reload", () => openFile(currentFile.path, line, offset, currentFile.view));
   toolbar.append(edit, save, reload, status);
   if (file.nextOffset !== null) toolbar.append(button("Next segment", () => openFile(path, 1, file.nextOffset)));
   if (file.offset) toolbar.append(button("Back to start", () => openFile(path)));
@@ -419,7 +461,7 @@ async function openFile(path, line = 1, offset = 0, initialView = defaultPreview
   if (markdown) {
     preview = document.createElement("div"); preview.className = "reply-pane file-preview"; preview.dataset.paper = $("reply-pane").dataset.paper;
     const article = document.createElement("article"); article.className = "markdown-body"; preview.append(article); panes.append(preview);
-    fileRenderer = createReplyRenderer(article, { summary: false, resolveImage: source => projectImage(api, root, path, source) });
+    fileRenderer = createReplyRenderer(article, { summary: false, resolveImage: source => projectImage(api, currentFile.root, currentFile.path, source) });
     refreshPreview = () => fileRenderer?.render(editor.text);
     const views = document.createElement("nav"); views.className = "segmented file-views"; views.setAttribute("aria-label", "Markdown view");
     const setView = view => {
@@ -438,7 +480,7 @@ async function openFile(path, line = 1, offset = 0, initialView = defaultPreview
       const anchor = event.target.closest("a");
       const href = anchor?.getAttribute("href");
       if (!href || /^(https?:|mailto:|#)/i.test(href) || anchor.matches(".footnote-ref a,.footnote-backref")) return;
-      event.preventDefault(); await openFile(relativeFilePath(path, href));
+      event.preventDefault(); await openFile(relativeFilePath(currentFile.path, href));
     }));
   }
   editor = createFileEditor(host, file, run(saveFile), () => {
@@ -450,7 +492,7 @@ async function openFile(path, line = 1, offset = 0, initialView = defaultPreview
   }, run(async (images, insert) => {
     for (const image of images) {
       const data = await imageData(image);
-      const result = await api("image", { root, path, type: image.type, data: data.slice(data.indexOf(",") + 1) });
+    const result = await api("image", { root: currentFile.root, path: currentFile.path, type: image.type, data: data.slice(data.indexOf(",") + 1) });
       insert(`![Image](${result.source})\n`);
     }
   }));
@@ -478,49 +520,62 @@ async function saveFile() {
     }
   } finally { savingFile = false; await recheckFile(); }
 }
-// The FILES heading only earns its space when there is a tree under it.
-const treeHeading = () => { document.querySelector(".tree-heading").hidden = !$("tree").children.length; };
-async function loadTree() {
-  const root = state.root;
-  $("tree").replaceChildren(); treeHeading();
-  if (!root) return;
-  const load = async (path, parent, depth = 0) => {
-    const data = await api(`tree?root=${encodeURIComponent(root)}&path=${encodeURIComponent(path)}`);
-    if (root !== state.root) return;
-    parent.replaceChildren();
-    for (const item of data.entries) {
-      const file = path ? path + "/" + item.name : item.name;
-      if (item.directory) {
-        const details = document.createElement("details"); details.className = "tree-dir";
-        const summary = document.createElement("summary");
-        summary.style.setProperty("--depth", String(depth));
-        summary.innerHTML = '<svg class="icon"><use href="#i-chevron"/></svg>';
-        const label = document.createElement("span"); label.textContent = item.name; summary.append(label);
-        const children = document.createElement("div"); details.append(summary, children);
-        details.ontoggle = run(async () => {
-          if (details.open) { expanded.add(file); await load(file, children, depth + 1); }
-          else {
-            for (const entry of expanded) if (entry === file || entry.startsWith(file + "/")) expanded.delete(entry);
-            children.replaceChildren();
-          }
-          updateWatch();
-        });
-        details.open = expanded.has(file);
-        parent.append(details);
-      } else {
-        const b = fileButton(file, () => openFile(file));
-        b.style.setProperty("--depth", String(depth));
-        b.querySelector(".file-name").textContent = item.name + (item.link ? " ↗" : "");
-        b.classList.toggle("changed", !!state.data?.report?.files.some(f => f.path === file));
-        b.setAttribute("aria-current", String(state.file === file));
-        parent.append(b);
-      }
+const affectsCurrent = item => currentFile?.root === item.root && (currentFile.path === item.path || currentFile.path.startsWith(item.path + "/"));
+const explorer = createFileExplorer({
+  api, root: () => state.root, current: () => currentFile?.path || state.file,
+  expanded, fileButton: (path, action) => {
+    const row = fileButton(path, action);
+    row.classList.toggle("changed", !!state.data?.report?.files.some(file => file.path === path));
+    return row;
+  },
+  notice, onWatch: updateWatch,
+  async open(path) {
+    await openFile(path);
+    if (currentFile?.path === path) setPane("content-pane", false);
+  },
+  showTree() { indexMode(); setPane("files-pane", false); },
+  async openNew(path) {
+    await openFile(path, 1, 0, "source");
+    if (currentFile?.path === path) { setPane("content-pane", false); editor?.enable(); }
+  },
+  async beforeRemove(item) {
+    if (!affectsCurrent(item)) return true;
+    if (savingFile) { notice("Saving. Wait before moving this file to Trash."); return false; }
+    if (!editor?.dirty) return true;
+    if (window.mygo) {
+      const choice = await window.mygo.call("Desktop.ConfirmClose", currentFile.path);
+      if (choice === 2) return false;
+      if (choice === 1) return true;
+      await saveFile(); return !editor.dirty;
     }
-    if (data.truncated) { const warning = document.createElement("p"); warning.textContent = "Too many directory entries; showing the first 2000."; parent.append(warning); }
-  };
-  await load("", $("tree"));
-  treeHeading();
-}
+    return confirm("This file has unsaved changes. Discard the draft and move it to Trash?");
+  },
+  async onMutation(result) {
+    if (result.move && affectsCurrent(result.move.from)) {
+      const { from, to } = result.move;
+      currentFile.path = to.path + currentFile.path.slice(from.path.length);
+      currentFile.root = to.root; state.file = currentFile.path;
+      contentIdentity(currentFile.path);
+      fileRenderer?.render(editor.text);
+    }
+    if (result.removed && affectsCurrent(result.removed)) {
+      removedFile = { ...currentFile };
+      editor?.destroy(); editor = undefined; currentFile = undefined;
+      clearTimeout(filePreviewTimer);
+      fileRenderer?.destroy(); fileRenderer = undefined;
+      state.file = ""; contentHeader();
+      const empty = document.createElement("p"); empty.className = "empty"; empty.textContent = "File removed. Use Undo to restore it.";
+      $("content").replaceChildren(empty);
+    }
+    if (result.restored && !currentFile && removedFile?.root === state.root &&
+      result.restored.root === removedFile.root && (removedFile.path === result.restored.path || removedFile.path.startsWith(result.restored.path + "/"))) {
+      await openFile(removedFile.path, removedFile.line, 0, removedFile.view);
+      removedFile = undefined;
+    }
+    selectFile(state.file);
+  },
+});
+function loadTree() { return explorer.refresh(); }
 function updateWatch() {
   if (socket?.readyState !== WebSocket.OPEN) return;
   const paths = new Set(expanded);
@@ -531,8 +586,13 @@ function updateWatch() {
   $("watch-text").textContent = watching ? "Watching files" : "Local files";
 }
 async function recheckFile() {
-  if (!foreground || !currentFile || currentFile.partial || savingFile || sourceOpen) return;
+  if (explorer.busy || !foreground || !currentFile || currentFile.partial || savingFile || sourceOpen) return;
   const target = currentFile;
+  if (target.image) {
+    const image = await api("image?" + new URLSearchParams({ root: target.root, path: target.path }));
+    if (currentFile === target) $("content").replaceChildren(imagePreview(image.url, target.path));
+    return;
+  }
   const fresh = await api(`file?root=${encodeURIComponent(target.root)}&path=${encodeURIComponent(target.path)}`);
   if (currentFile !== target || fresh.version === target.version) return;
   if (editor?.dirty) notice("The file changed on disk; the draft is kept and will need conflict handling on save");
@@ -571,6 +631,7 @@ $("reply-source").oninput = () => {
 setupTheme($("reply-pane"), () => { renderer.render($("reply-source").value); updateReplyContext(); });
 setupPreviewPreference();
 const panes = ["projects-pane", "files-pane", "content-pane", "reply-pane"];
+for (const pane of JSON.parse(localStorage.getItem("review-collapsed-panes") || "[]")) $(pane).classList.add("collapsed");
 const paneNames = { "projects-pane": "projects pane", "files-pane": "files pane", "content-pane": "content pane", "reply-pane": "reply pane" };
 const paneSide = { "projects-pane": "left", "files-pane": "left", "content-pane": "left", "reply-pane": "right" };
 const MIN_WIDTH = { projects: 140, files: 180, content: 280, reply: 300 };
@@ -619,6 +680,7 @@ function layoutPanes() {
       p -= reduce;
     }
   }
+  if (collapsed("content-pane") && collapsed("reply-pane") && !collapsed("files-pane")) f = total - p - 80;
   effective.projects = p; effective.files = f; effective.reply = r;
   const columns = [
     collapsed("projects-pane") ? "40px" : p + "px",
@@ -654,6 +716,7 @@ function layoutPanes() {
 }
 function setPane(id, isCollapsed) {
   $(id).classList.toggle("collapsed", isCollapsed);
+  localStorage.setItem("review-collapsed-panes", JSON.stringify(panes.filter(collapsed)));
   layoutPanes();
 }
 document.querySelectorAll("[data-collapse]").forEach(b => { b.onclick = () => setPane(b.dataset.collapse, !collapsed(b.dataset.collapse)); });
@@ -706,6 +769,9 @@ new ResizeObserver(layoutPanes).observe($("console"));
 layoutPanes();
 document.addEventListener("keydown", run(async e => {
   if (e.defaultPrevented) return;
+  if (e.key === "Escape" && !$("project-context").hidden) {
+    e.preventDefault(); $("project-context").hidden = true; return;
+  }
   if (window.mygo && (e.metaKey || e.ctrlKey) && ["Enter", "s"].includes(e.key)) return;
   if (e.key === "Escape" && document.querySelector("details.menu[open]")) {
     e.preventDefault(); document.querySelectorAll("details.menu[open]").forEach(menu => menu.open = false); return;
@@ -725,6 +791,7 @@ document.addEventListener("keydown", run(async e => {
   if (state.mode === "turn" && ["j","n","k","p"].includes(e.key)) { e.preventDefault(); diff?.nav(["j","n"].includes(e.key) ? 1 : -1); }
 }));
 document.addEventListener("paste", e => {
+  if (e.defaultPrevented) return;
   if (e.target.closest("input,textarea,select,[contenteditable=true]")) return;
   const text = e.clipboardData?.getData("text/plain");
   if (!text) return;
@@ -763,7 +830,7 @@ $("message-input").onkeydown = run(async e => {
 });
 window.addEventListener("beforeunload", e => { if (hasUnsavedChanges()) { e.preventDefault(); e.returnValue = ""; } });
 window.addEventListener("blur", () => { foreground = false; updateWatch(); });
-window.addEventListener("focus", run(async () => { foreground = document.visibilityState === "visible"; branches.delete(state.root); renderProjects(); updateWatch(); await recheckFile(); await disposeHistory?.refresh?.(); }));
+window.addEventListener("focus", run(async () => { foreground = document.visibilityState === "visible"; refreshBranch(state.root); updateWatch(); await recheckFile(); await disposeHistory?.refresh?.(); }));
 document.addEventListener("visibilitychange", run(async () => { foreground = document.visibilityState === "visible" && document.hasFocus(); updateWatch(); await recheckFile(); }));
 $("document").addEventListener("click", run(async e => {
   const anchor = e.target.closest("a");
@@ -791,7 +858,11 @@ function connectEvents() {
       await focusSession("#" + new URLSearchParams({ root: event.data.root, session: event.data.sessionId }));
       return;
     }
-    if (event.type === "files") { branches.delete(state.root); renderProjects(); await recheckFile(); await loadTree(); await disposeHistory?.refresh?.(); return; }
+    if (event.type === "files") {
+      refreshBranch(state.root); explorer.invalidateSearch();
+      if (!explorer.busy) { await recheckFile(); await loadTree(); await disposeHistory?.refresh?.(); }
+      return;
+    }
     if (event.type === "watch-error") { notice(event.data); return; }
     await refresh();
   });
@@ -820,7 +891,9 @@ window.reviewDesktop = {
   },
   focus: focusSession,
   command(name) {
-    if (name === "undo" || name === "redo") editHistory(name);
+    if (name === "undo" && document.activeElement.closest("#tree") && !document.activeElement.matches("input")) run(() => explorer.undo())();
+    else if (name === "undo" || name === "redo") editHistory(name);
+    if (name === "quick-open") run(() => explorer.quickOpen())();
     if (name === "find" || name === "replace") {
       $("content").querySelector('[data-view="source"]')?.click();
       findInEditor($("content"));

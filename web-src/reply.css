@@ -394,7 +394,7 @@ footer {
   font-size: 11px;
 }
 
-.canvas { position: relative; flex: 1; min-height: 0; overflow: auto; scrollbar-width: thin; }
+.canvas { position: relative; flex: 1; min-height: 0; overflow: auto; }
 #empty {
   position: absolute;
   inset: 0;

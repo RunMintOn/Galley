@@ -29,6 +29,7 @@ npm run test:e2e
 npm run test:redesign
 npm run test:polish
 npm run test:editor
+npm run test:files
 npm run test:diff
 npm run test:visual
 npm run verify:package
@@ -37,6 +38,8 @@ npm run verify:package
 `check` 包含类型检查、公共接口测试、Go 的 Node 查找与文件读写测试和网页/服务构建。只运行 Go 测试可使用 `npm run test:go`，不会打开窗口。浏览器测试使用隔离数据与无头 Chrome，不连接日用 Agent。截图和测试结果在 `test-results/`，下次运行会更新。`test:visual` 从 `dist/web` 读取网页资源；修改 `web-src` 后先运行 `npm run build`，否则截图和断言仍来自旧构建。
 
 `test:editor` 覆盖文件树预览、相对图片、默认预览、栏宽拖动与恢复、剪贴板 JPEG、保存取消、关闭保存、查找替换和外部修改。原生对话框使用 IPC 替身，不打开系统面板；磁盘写入与冲突另由 Go 测试覆盖。截图在 `test-results/editor/`。`test:desktop` 实测系统保存面板的取消与落盘、再次保存，以及 macOS 文件打开事件进入已运行的独立编辑窗口。Finder 冷启动仍需单独验收。
+
+`test:files` 覆盖新建、保留草稿的重命名、跨项目复制/移动、废纸篓与撤回、同名冲突、快速找文件、展开/折叠记忆和回到应用时的项目行高度。使用隔离目录与无头 Chrome；macOS 废纸篓测试只操作测试创建的文件，不打开 Finder。截图在 `test-results/file-explorer/`。
 
 ## 桌面测试
 
@@ -57,6 +60,8 @@ npm run test:desktop -- --ime=com.bytedance.inputmethod.doubaoime.pinyin
 上例是已验收的豆包拼音 ID，不代表所有机器都安装了它。普通按键测试临时选择 ABC，专项测试再选择指定中文输入法，避免候选态影响快捷键断言；无论成功或失败，结束时恢复测试前的输入法。`swift test/input-source.swift` 可查看当前 ID。结果与组合输入记录保存在 `test-results/desktop/`。
 
 ## 构建和更新日用应用
+
+当前 UI 快速反馈阶段直接修改源码，完成必要快检后默认重建正式桌面包，不再单独等待用户要求重建。应用正在运行时按下文正常退出、停止服务、重建并重新打开；退出被取消时不强制结束进程。
 
 ```sh
 npm run build:desktop

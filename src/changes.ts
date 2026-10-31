@@ -14,6 +14,7 @@ export interface ChangedFile {
   deleted: number;
   diff?: FileDiff;
   notice?: string;
+  countable?: boolean;
 }
 export interface ChangeReport {
   id: string;

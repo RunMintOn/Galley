@@ -10,6 +10,7 @@ import type { Registration, Round } from "./model.ts";
 import { bearerToken, hasServiceHost, isCrossOrigin } from "./service-protocol.mjs";
 import { createReplyUrl, parseReplyReference, readReply } from "./session-reply.mjs";
 import { tree, readText, saveText, readImage, saveImage, projectPath, ignored } from "./files.ts";
+import { createFileActions } from "./file-actions.ts";
 import { gitQuery } from "./git.ts";
 import { BUILD } from "./build.ts";
 
@@ -40,6 +41,7 @@ export async function startConsole(options: { directory: string; port?: number; 
   const token = options.token || randomUUID();
   const store = new Store(options.directory);
   await store.load();
+  const files = createFileActions(store);
   const web = options.web || fileURLToPath(new URL("./web/", import.meta.url));
   const peers = new Set<WebSocket>();
   const watchers = new Map<WebSocket, { handles: FSWatcher[]; timer?: NodeJS.Timeout }>();
@@ -133,6 +135,24 @@ export async function startConsole(options: { directory: string; port?: number; 
         }
         if (url.pathname === "/api/tree" && request.method === "GET") {
           json(response, await tree(store, url.searchParams.get("root") || "", url.searchParams.get("path") || "")); return;
+        }
+        if (url.pathname === "/api/files/search" && request.method === "GET") {
+          json(response, { files: await files.search(url.searchParams.get("root") || "") }); return;
+        }
+        if (url.pathname === "/api/files/info" && request.method === "GET") {
+          json(response, await files.info(url.searchParams.get("root") || "", url.searchParams.get("path") || "")); return;
+        }
+        if (url.pathname === "/api/files/action" && request.method === "POST") {
+          const result = await files.perform(await jsonBody(request));
+          notify("files"); json(response, result); return;
+        }
+        if (url.pathname === "/api/files/undo" && request.method === "POST") {
+          const result = await files.undo((await jsonBody(request)).id);
+          notify("files"); json(response, result); return;
+        }
+        if (url.pathname === "/api/files/system" && request.method === "POST") {
+          const body = await jsonBody(request);
+          json(response, await files.system(body.root, body.path || "", body.action)); return;
         }
         if (url.pathname === "/api/file" && request.method === "GET") {
           json(response, await readText(store, url.searchParams.get("root") || "", url.searchParams.get("path") || "", Number(url.searchParams.get("offset") || 0))); return;

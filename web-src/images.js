@@ -7,6 +7,15 @@ export function imageData(file) {
   });
 }
 
+export const isImagePath = path => /\.(png|jpe?g|gif|webp|svg|avif|bmp|ico)$/i.test(path);
+
+export function imagePreview(url, path) {
+  const figure = document.createElement("figure"); figure.className = "image-preview";
+  const image = document.createElement("img"); image.src = url; image.alt = path;
+  figure.append(image);
+  return figure;
+}
+
 export function relativeFilePath(documentPath, source) {
   if (source.startsWith("/")) return decodeURIComponent(source.split(/[?#]/)[0]);
   return decodeURIComponent(new URL(source, "https://local/" + documentPath).pathname.slice(1));

@@ -22,6 +22,10 @@ type serviceInfo struct {
 }
 type Desktop struct{}
 
+func (Desktop) CopyText(text string) {
+	mygo.Clipboard.WriteText(text)
+}
+
 // PickFolder opens the system folder chooser so adding a project never asks the
 // reader to type an absolute path by hand.
 func (Desktop) PickFolder(ctx context.Context) (string, error) {
@@ -211,6 +215,7 @@ func menu() *mygo.Menu {
 			}},
 			item("New Markdown Tab", "CmdOrCtrl+T", "new-tab", true),
 			item("New Diff Tab", "CmdOrCtrl+Shift+T", "new-diff", true),
+			item("Go to File…", "CmdOrCtrl+P", "quick-open", false),
 			{Label: "Close Tab", Accelerator: "CmdOrCtrl+W", Click: func(_ *mygo.MenuItem, w *mygo.Window) {
 				if w == scratch {
 					command(w, "close-tab")

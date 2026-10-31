@@ -1,6 +1,17 @@
 const FONTS = ["system", "serif", "mono"];
 const PAPER = ["charcoal", "ivory"];
 
+const scrollTimers = new WeakMap();
+document.addEventListener("scroll", event => {
+  const scroller = event.target === document ? document.documentElement : event.target;
+  scroller.classList.add("is-scrolling");
+  clearTimeout(scrollTimers.get(scroller));
+  scrollTimers.set(scroller, setTimeout(() => {
+    scroller.classList.remove("is-scrolling");
+    scrollTimers.delete(scroller);
+  }, 800));
+}, true);
+
 export const defaultPreview = () => localStorage.getItem("review-default-preview") === "true";
 
 export function setupPreviewPreference() {

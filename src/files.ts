@@ -16,7 +16,7 @@ async function boundedRead(handle: FileHandle, length: number, position: number)
   }
   return buffer.subarray(0, total);
 }
-export const ignored = new Set([".git", "node_modules", "dist", "build", ".cache", ".next"]);
+export const ignored = new Set([".git", ".DS_Store", "node_modules", "dist", "build", ".cache", ".next"]);
 export const inside = (root: string, path: string) => {
   const local = relative(root, path);
   return !isAbsolute(local) && local !== ".." && !local.startsWith(".." + sep);
@@ -35,16 +35,17 @@ export async function tree(store: Store, root: string, path: string) {
   const actual = await projectPath(store, root, path);
   const directory = await opendir(actual);
   const entries: { name: string; directory: boolean; link: boolean }[] = [];
+  const hidden: string[] = [];
   let truncated = false;
   for await (const item of directory) {
-    if (ignored.has(item.name)) continue;
+    if (ignored.has(item.name)) { hidden.push(item.name); continue; }
     if (entries.length >= 2000) { truncated = true; break; }
     entries.push({ name: item.name, directory: item.isDirectory(), link: item.isSymbolicLink() });
   }
   entries.sort((a, b) => Number(b.directory) - Number(a.directory) || a.name.localeCompare(b.name));
-  return { entries, truncated };
+  return { entries, truncated, hidden };
 }
-const imageTypes: Record<string, string> = { ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp", ".svg": "image/svg+xml", ".avif": "image/avif", ".bmp": "image/bmp", ".ico": "image/x-icon" };
+export const imageTypes: Record<string, string> = { ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp", ".svg": "image/svg+xml", ".avif": "image/avif", ".bmp": "image/bmp", ".ico": "image/x-icon" };
 export async function readImage(store: Store, root: string, path: string) {
   const actual = await projectPath(store, root, path);
   const type = imageTypes[extname(actual).toLowerCase()];

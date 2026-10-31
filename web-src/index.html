@@ -25,12 +25,24 @@
   <symbol id="i-file" viewBox="0 0 16 16">
     <path d="M4.2 1.9h4.9l3.7 3.7v8.5H4.2Z"/><path d="M9.1 1.9v3.7h3.7"/>
   </symbol>
+  <symbol id="i-folder" viewBox="0 0 16 16"><path d="M2 4h4l1.5 1.5H14v7H2Z"/><path d="M2 4V2.5h4L7.5 4H13v1.5"/></symbol>
   <symbol id="i-chevron" viewBox="0 0 16 16"><path d="m6.2 3.8 4.2 4.2-4.2 4.2"/></symbol>
   <symbol id="i-chevron-down" viewBox="0 0 16 16"><path d="m3.8 6.2 4.2 4.2 4.2-4.2"/></symbol>
   <symbol id="i-close" viewBox="0 0 16 16"><path d="m4.6 4.6 6.8 6.8M11.4 4.6l-6.8 6.8"/></symbol>
+  <symbol id="i-search" viewBox="0 0 16 16"><circle cx="6.8" cy="6.8" r="4"/><path d="m9.8 9.8 3.4 3.4"/></symbol>
+  <symbol id="i-target" viewBox="0 0 16 16"><circle cx="8" cy="8" r="4"/><path d="M8 1v4M8 11v4M1 8h4M11 8h4"/></symbol>
+  <symbol id="i-collapse" viewBox="0 0 16 16"><path d="M3 3h10M3 13h10m2-7 3-2 3 2m-6 4 3 2 3-2"/></symbol>
+  <symbol id="i-new-file" viewBox="0 0 16 16"><path d="M8 14H3V2h6l3 3v3M9 2v3h3M12 10v5M9.5 12.5h5"/></symbol>
+  <symbol id="i-new-folder" viewBox="0 0 16 16"><path d="M7 12H2V3h4l2 2h6v3M11.5 9v6M8.5 12h6"/></symbol>
 </svg>
 <div id="boot-panel"><p id="boot-message">Opening Galley…</p><button id="retry" hidden>Retry</button></div>
-<div id="notice" role="status" aria-live="polite"></div>
+<div id="notice" role="status" aria-live="polite" hidden><span id="notice-text"></span><button id="notice-undo" hidden>Undo</button><button id="notice-close" class="icon-btn" aria-label="Dismiss notification"><svg class="icon"><use href="#i-close"/></svg></button></div>
+<div id="project-context" class="menu-items" hidden><button id="context-reveal-project">Reveal in Finder</button><button id="context-terminal-project">Open in Terminal</button><hr><button id="context-remove-project">Remove project</button></div>
+<div id="file-context" class="menu-items" role="menu" aria-label="File actions" hidden></div>
+<dialog id="file-picker" aria-label="Go to file">
+  <div class="file-picker-input"><svg class="icon"><use href="#i-search"/></svg><input id="file-query" type="text" placeholder="Go to file…" aria-label="Find a file by name or path" role="combobox" aria-controls="file-results" aria-expanded="true" aria-autocomplete="list" autocomplete="off" spellcheck="false"><kbd>esc</kbd></div>
+  <div id="file-results" role="listbox" aria-label="Matching files"></div><p id="file-search-status" role="status"></p>
+</dialog>
 <main id="console">
   <section class="pane projects-pane" id="projects-pane">
     <div class="resizer" data-edge="projects" role="separator" aria-orientation="vertical" aria-controls="projects-pane files-pane" aria-valuenow="210" aria-valuemin="140" aria-valuemax="360" tabindex="0" title="Drag to resize · double-click to reset"></div>
@@ -41,11 +53,11 @@
   </section>
   <section class="pane files-pane" id="files-pane">
     <div class="resizer" data-edge="files" role="separator" aria-orientation="vertical" aria-controls="files-pane content-pane" aria-valuenow="248" aria-valuemin="180" aria-valuemax="420" tabindex="0" title="Drag to resize · double-click to reset"></div>
-    <header class="pane-heading"><strong id="index-label">CHANGED <span id="file-count">0</span></strong><button id="changed-layout" class="text-toggle" aria-pressed="false" aria-label="Show changed files as a tree" title="Show changed files as a tree">Tree</button><span id="change-totals" class="totals"></span></header>
+    <header class="pane-heading"><strong id="index-label">CHANGED <span id="file-count">0</span></strong><button id="changed-layout" class="text-toggle" aria-pressed="false" aria-label="Show changed files as a tree" title="Show changed files as a tree">Tree</button><span id="change-totals" class="totals"></span><button class="pane-toggle" data-collapse="files-pane" aria-label="Collapse files pane" title="Collapse files pane"></button></header>
     <button class="rail-button" data-collapse="files-pane" aria-label="Expand files pane" title="Expand files pane"></button>
-    <div class="pane-body" id="review-index"><nav id="changed" aria-label="Changed files"></nav><h3 class="tree-heading">FILES</h3><nav id="tree" aria-label="Files"></nav></div>
+    <div class="pane-body" id="review-index"><nav id="changed" aria-label="Changed files"></nav><div class="tree-heading"><strong>FILES</strong><span class="spacer"></span><button id="new-file" class="icon-btn" aria-label="New file" title="New file"><svg class="icon"><use href="#i-new-file"/></svg></button><button id="new-folder" class="icon-btn" aria-label="New folder" title="New folder"><svg class="icon"><use href="#i-new-folder"/></svg></button><button id="find-file" class="icon-btn" aria-label="Find file" title="Go to file (⌘P)"><svg class="icon"><use href="#i-search"/></svg></button><button id="reveal-file" class="icon-btn" aria-label="Reveal current file" title="Reveal current file"><svg class="icon"><use href="#i-target"/></svg></button><button id="collapse-tree" class="icon-btn" aria-label="Collapse all folders" title="Collapse all folders"><svg class="icon"><use href="#i-collapse"/></svg></button></div><nav id="tree" aria-label="Files" tabindex="0"></nav></div>
     <div class="pane-body" id="git-index" hidden></div>
-    <footer class="files-footer"><button id="open-scratch">Markdown editor<svg class="icon"><use href="#i-external"/></svg></button><span class="spacer"></span><button class="pane-toggle" data-collapse="files-pane" aria-label="Collapse files pane" title="Collapse files pane"></button></footer>
+    <footer class="files-footer"><button id="open-scratch">Markdown editor<svg class="icon"><use href="#i-external"/></svg></button></footer>
   </section>
   <section class="pane content-pane" id="content-pane">
     <header class="content-header"><nav class="segmented" aria-label="Content view"><button id="turn-tab" aria-pressed="true">Review</button><button id="history-tab" aria-pressed="false">Git</button></nav><span id="content-name" class="doc-name"></span><span id="content-counts" class="totals"></span><span class="spacer"></span><button class="pane-toggle" data-collapse="content-pane" aria-label="Collapse content pane" title="Collapse content pane"></button></header>
