@@ -5,3 +5,4 @@ test-results/
 .DS_Store
 dist-desktop/
 dist-desktop-test/
+.scratch/ui-refresh/mockup/preview-*.png
