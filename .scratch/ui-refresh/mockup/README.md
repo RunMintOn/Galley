@@ -2,6 +2,12 @@
 
 Static HTML mockup. The real app was not modified.
 
+Current detail pass: three-line Git projects, right-click Remove, Git history
+with relative times and bottom-right counts, custom ref menu, dismissible
+notice, and content/reply collapse. Use the bottom bar's No changes / Clean Git /
+Non-Git / Notice buttons to preview states. These are review controls, not product settings.
+These newer decisions supersede the older two-line and inert-collapse notes below.
+
 Open `index.html` directly in a browser, or:
 
 ```sh

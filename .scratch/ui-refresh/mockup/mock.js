@@ -27,11 +27,6 @@ function setFont(font) {
   $$('[data-setting="font"] button').forEach(b => b.setAttribute("aria-pressed", String(b.dataset.value === font)));
 }
 
-function setProjectPath(on) {
-  body.dataset.projectPath = on ? "on" : "off";
-  $("#path-btn").setAttribute("aria-pressed", String(on));
-}
-
 function setTypeColor(on) {
   body.dataset.typeColor = on ? "on" : "off";
   $("#type-color-btn").setAttribute("aria-pressed", String(on));
@@ -55,7 +50,6 @@ $$(".segmented[data-setting]").forEach(group => {
   });
 });
 
-$("#path-btn").onclick = () => setProjectPath(body.dataset.projectPath === "off");
 $("#type-color-btn").onclick = () => setTypeColor(body.dataset.typeColor !== "on");
 $("#syntax-btn").onclick = () => setSyntax(body.dataset.syntax !== "on");
 
@@ -79,6 +73,7 @@ document.addEventListener("click", event => {
 const MODES = {
   review: { dir: "src/", name: "diffview.go", mono: false, counts: true, position: "1 / 3 files" },
   git: { dir: "", name: "9f7230f", mono: true, counts: false, position: "1 / 1 files" },
+  folder: { dir: "", name: "", mono: false, counts: false, position: "" },
   source: { dir: "", name: "Reply source", mono: false, counts: false, position: "" },
 };
 
@@ -86,7 +81,13 @@ function setMode(mode) {
   const spec = MODES[mode];
   content.dataset.mode = mode;
   $$(".content-view").forEach(view => { view.hidden = view.dataset.view !== mode; });
-  $$("[data-tab]").forEach(tab => tab.setAttribute("aria-pressed", String(tab.dataset.tab === (mode === "source" ? "review" : mode))));
+  $$("[data-tab]").forEach(tab => tab.setAttribute("aria-pressed", String(tab.dataset.tab === (mode === "source" ? "review" : mode === "folder" ? "git" : mode))));
+  $("#review-index").hidden = mode === "git" || mode === "folder";
+  $("#git-index").hidden = mode !== "git";
+  $("#folder-index").hidden = mode !== "folder";
+  $(".changed").hidden = false;
+  $(".pane-files .pane-title").innerHTML = mode === "git" || mode === "folder" ? "Git" : 'Changed <span class="count">3</span>';
+  $(".pane-files .totals").hidden = mode === "git" || mode === "folder";
   $("#doc-dir").textContent = spec.dir;
   $("#doc-dir").hidden = !spec.dir;
   $("#doc-name").textContent = spec.name;
@@ -114,6 +115,70 @@ function setComposer(open) {
 
 replyButton.onclick = () => setComposer(composer.hidden);
 $("#send").onclick = () => { message.value = ""; setComposer(false); };
+
+/* ── detail-pass interactions ──────────────────────────────────────────── */
+
+const projectMenu = $("#project-context");
+let contextProject;
+$$(".project").forEach(project => {
+  project.onclick = () => {
+    $$(".project").forEach(row => row.classList.toggle("is-current", row === project));
+    if (content.dataset.mode === "git" || content.dataset.mode === "folder") setMode($(".branch", project) ? "git" : "folder");
+  };
+  project.oncontextmenu = event => {
+    event.preventDefault();
+    contextProject = project;
+    projectMenu.style.left = Math.min(event.clientX, innerWidth - 180) + "px";
+    projectMenu.style.top = Math.min(event.clientY, innerHeight - 90) + "px";
+    projectMenu.hidden = false;
+  };
+});
+$('.pane-projects [title="Project actions"]').onclick = event => {
+  contextProject = $(".project.is-current");
+  const rect = event.currentTarget.getBoundingClientRect();
+  projectMenu.style.left = rect.left + "px";
+  projectMenu.style.top = rect.bottom + 4 + "px";
+  projectMenu.hidden = !projectMenu.hidden;
+  event.stopPropagation();
+};
+$("#remove-project").onclick = () => {
+  contextProject.remove();
+  $(".pane-projects .count").textContent = $$(".project").length;
+};
+document.addEventListener("click", event => {
+  if (!event.target.closest(".ref-picker")) $(".ref-picker").open = false;
+  projectMenu.hidden = true;
+});
+$$(".ref-options button").forEach(option => option.onclick = () => {
+  $("#ref-label").textContent = option.textContent;
+  $$(".ref-options button").forEach(row => row.setAttribute("aria-current", String(row === option)));
+  $(".ref-picker").open = false;
+});
+$$(".commit-row").forEach(row => row.onclick = () => {
+  $$(".commit-row").forEach(item => item.classList.toggle("is-current", item === row));
+});
+$("#notice-demo").onclick = () => { $("#notice").hidden = false; };
+$("#notice-close").onclick = () => { $("#notice").hidden = true; };
+$$("[data-preview]").forEach(button => button.onclick = () => {
+  const mode = button.dataset.preview;
+  setMode(mode === "empty" ? "review" : mode);
+  $(".changed").hidden = mode === "empty";
+  if (mode === "empty") {
+    $(".pane-files .count").textContent = "0";
+    $(".pane-files .totals").hidden = true;
+  }
+});
+for (const [pane, title, icon] of [[content, "content", "left"], [reply, "reply", "right"]]) {
+  const toggle = $(`[title="Collapse ${title}"]`, pane);
+  const rail = document.createElement("button");
+  rail.className = "rail-button";
+  rail.title = `Expand ${title}`;
+  rail.setAttribute("aria-label", rail.title);
+  rail.innerHTML = `<svg class="icon"><use href="#i-panel-${icon}"/></svg>`;
+  pane.prepend(rail);
+  toggle.onclick = () => pane.classList.add("collapsed");
+  rail.onclick = () => pane.classList.remove("collapsed");
+}
 
 /* ── diff controls (visual only) ───────────────────────────────────────── */
 
@@ -237,5 +302,7 @@ document.addEventListener("keydown", event => {
   if (event.key !== "Escape") return;
   setSettings(false);
   setNotes(false);
+  projectMenu.hidden = true;
+  $(".ref-picker").open = false;
   if (!composer.hidden) setComposer(false);
 });

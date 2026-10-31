@@ -142,22 +142,22 @@ body[data-theme=light] .pane-reply[data-paper=ivory] { --paper: #fcfcfa; }
 .row.is-current::before {
   content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 2px; background: var(--accent);
 }
-/* Two lines: name and branch on top, location below. The location is
-   pre-elided from the left, never from the end, and the full path is the title. */
+/* Branches get their own line so they cannot squeeze the project name. */
 .project {
-  display: grid; grid-template-columns: 10px minmax(0, 1fr) auto; grid-template-rows: 18px 13px;
-  column-gap: 6px; row-gap: 2px; align-content: center; height: 48px;
+  display: grid; grid-template-columns: 10px minmax(0, 1fr) auto; grid-template-rows: 18px 14px 13px;
+  column-gap: 6px; row-gap: 2px; align-content: center; height: 64px;
 }
-.project-dot { grid-column: 1; grid-row: 1 / 3; align-self: center; justify-self: start; width: 6px; height: 6px; border-radius: 50%; background: transparent; }
-.project-meta { grid-column: 3; grid-row: 1; display: flex; align-items: center; gap: 6px; align-self: center; }
+.project-dot { grid-column: 1; grid-row: 1 / -1; align-self: center; justify-self: start; width: 6px; height: 6px; border-radius: 50%; background: transparent; }
+.project-meta { display: contents; }
+.project .branch { grid-column: 2 / 4; grid-row: 2; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.project .badge { grid-column: 3; grid-row: 1; }
+.project:not(:has(.branch)) { height: 48px; grid-template-rows: 18px 13px; }
+.project:not(:has(.branch)) .project-path { grid-row: 2; }
 .project-path {
-  grid-column: 2 / 4; grid-row: 2; align-self: center;
+  grid-column: 2 / 4; grid-row: 3; align-self: center;
   font: 9.5px/1.3 var(--mono); letter-spacing: .01em; color: var(--subtle);
   overflow: hidden; white-space: nowrap;
 }
-body[data-project-path=off] .project { height: 38px; grid-template-rows: 18px; }
-body[data-project-path=off] .project-dot { grid-row: 1; }
-body[data-project-path=off] .project-path { display: none; }
 .row.is-current .project-path { color: var(--muted); }
 .row:hover .project-path { color: var(--muted); }
 .project-dot.working { background: var(--green); }
@@ -188,6 +188,7 @@ body[data-type-color=on] .file-icon[data-type=image] { color: var(--type-image);
   border-top: 1px solid var(--border);
   font: 500 10px/1.4 var(--ui); letter-spacing: .09em; text-transform: uppercase; color: var(--muted);
 }
+.changed[hidden] + .section-label { margin-top: 10px; padding-top: 0; border-top: 0; }
 .tree { padding-bottom: 10px; }
 .tree-row { height: 26px; gap: 6px; padding-left: calc(10px + var(--depth, 0) * 14px); font-size: 12.5px; }
 .tree-row.file-row { padding-left: calc(28px + var(--depth, 0) * 14px); }
@@ -275,6 +276,31 @@ body[data-syntax=on] .diff .tk-k, body[data-syntax=on] .diff .tk-t, body[data-sy
 .content-body.nowrap .diff { width: max-content; min-width: 100%; table-layout: auto; }
 
 /* ── git ───────────────────────────────────────────────────────────────── */
+
+.quiet-state { margin: 0; padding: 12px; color: var(--subtle); font: 11px/1.6 var(--ui); }
+.ref-picker { position: relative; margin: 10px 12px 0; font-size: 11px; }
+.ref-picker summary { display: flex; align-items: center; justify-content: space-between; padding: 6px 8px; border: 1px solid var(--border); border-radius: 4px; cursor: pointer; list-style: none; }
+.ref-picker summary::-webkit-details-marker { display: none; }
+.ref-options, .floating-menu { padding: 4px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); box-shadow: var(--shadow-pop); z-index: 50; }
+.ref-options { position: absolute; top: calc(100% + 4px); left: 0; min-width: 100%; width: max-content; max-width: 340px; }
+.ref-options button, .floating-menu button { display: block; width: 100%; padding: 7px 9px; text-align: left; border-radius: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ref-options button:hover, .floating-menu button:hover { background: var(--hover); }
+.ref-options button[aria-current=true] { background: var(--selected); }
+.git-day { margin: 0; padding: 12px 12px 6px; font: 500 10px/1.4 var(--ui); color: var(--subtle); text-transform: uppercase; letter-spacing: .09em; }
+.commit-row { display: flex; flex-direction: column; align-items: stretch; height: auto; gap: 5px; padding: 9px 12px; }
+.commit-subject { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.commit-row .commit-meta { margin: 0; font: 10px/1.5 var(--ui); white-space: normal; }
+.commit-bottom { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; color: var(--subtle); font: 10px/1.5 var(--ui); }
+.commit-bottom .counts { flex: none; margin: 0; }
+.floating-menu { position: fixed; min-width: 160px; }
+#notice { position: fixed; bottom: 44px; left: 16px; z-index: 60; display: flex; align-items: center; gap: 24px; padding: 8px 10px 8px 14px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); box-shadow: var(--shadow-pop); }
+.rail-button { display: none; width: 40px; height: 40px; place-items: center; color: var(--subtle); }
+.pane.collapsed > :not(.rail-button) { display: none; }
+.pane.collapsed > .rail-button { display: grid; }
+#shell:has(.pane-content.collapsed) { grid-template-columns: var(--w-projects) var(--w-files) 40px minmax(360px,1fr); }
+#shell:has(.pane-reply.collapsed) { grid-template-columns: var(--w-projects) var(--w-files) minmax(280px,1fr) 40px; }
+#shell:has(.pane-content.collapsed):has(.pane-reply.collapsed) { grid-template-columns: var(--w-projects) minmax(160px,1fr) 40px 40px; }
+#shell:has(.pane.collapsed) .resizer { display: none; }
 
 .commit-scroll { padding: 16px; }
 .commit-card { padding: 14px 16px; border: 1px solid var(--border); border-radius: var(--r-surface); background: var(--panel); }
@@ -451,15 +477,6 @@ body[data-syntax=on] .diff .tk-k, body[data-syntax=on] .diff .tk-t, body[data-sy
 
 .pane-content[data-mode=source] .hints { display: none; }
 .pane-content[data-mode=source] .content-foot { display: none; }
-
-@container projects (max-width: 205px) {
-  .project { height: 38px; grid-template-rows: 18px; }
-  .project-dot { grid-row: 1; }
-  .project-path { display: none; }
-}
-@container projects (max-width: 170px) {
-  .branch { display: none; }
-}
 
 @container reply (max-width: 430px) {
   .reply-nav { gap: 3px; }

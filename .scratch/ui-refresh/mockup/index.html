@@ -69,7 +69,7 @@
         <button class="row project" title="/Users/ziqian/dev/sites/ego-site">
           <span class="project-dot"></span>
           <span class="project-name">ego-site</span>
-          <span class="project-meta"><span class="branch">main</span></span>
+          <span class="project-meta"><span class="branch">integration/review-console-redesign</span></span>
           <span class="project-path">…/sites/ego-site</span>
         </button>
         <button class="row project" title="/Users/ziqian/dotfiles">
@@ -159,7 +159,7 @@
         <button class="icon-btn" title="Collapse files"><svg class="icon"><use href="#i-panel-left"/></svg></button>
       </div>
     </header>
-    <div class="pane-body">
+    <div class="pane-body" id="review-index">
       <div class="list changed">
         <button class="row file-row is-current">
           <span class="file-icon" data-type="go"><svg class="icon"><use href="#i-file"/></svg></span>
@@ -202,6 +202,36 @@
         </button>
       </nav>
     </div>
+    <div class="pane-body" id="git-index" hidden>
+      <details class="ref-picker">
+        <summary><span id="ref-label">HEAD</span><svg class="chev"><use href="#i-chevron-down"/></svg></summary>
+        <div class="ref-options">
+          <button aria-current="true">HEAD</button>
+          <button>main</button>
+          <button>integration/review-console-redesign</button>
+          <button>origin/main</button>
+        </div>
+      </details>
+      <p class="quiet-state">No uncommitted changes</p>
+      <h3 class="git-day">Today</h3>
+      <button class="row commit-row is-current">
+        <span class="commit-subject">Record the release-time install overwrite protection</span>
+        <span class="commit-meta">RunMinton · 1c1d542</span>
+        <span class="commit-bottom"><time title="30 Oct 2026, 23:41:51">23:41:51 · 1 hour ago</time><span class="counts"><span class="add">+8</span><span class="del">−2</span></span></span>
+      </button>
+      <button class="row commit-row">
+        <span class="commit-subject">Prepare the 0.2.0 release notes and installation guide</span>
+        <span class="commit-meta">RunMinton · d225e41</span>
+        <span class="commit-bottom"><time title="30 Oct 2026, 23:38:06">23:38:06 · 1 hour ago</time><span class="counts"><span class="add">+119</span><span class="del">−13</span></span></span>
+      </button>
+      <h3 class="git-day">Yesterday</h3>
+      <button class="row commit-row">
+        <span class="commit-subject">Point the docs at the current install location</span>
+        <span class="commit-meta">RunMinton · 761c3bb</span>
+        <span class="commit-bottom"><time title="29 Oct 2026, 23:12:00">23:12:00 · 1 day ago</time><span class="counts"><span class="add">+12</span><span class="del">−4</span></span></span>
+      </button>
+    </div>
+    <div class="pane-body" id="folder-index" hidden><p class="quiet-state">This folder isn’t a Git repository</p></div>
     <footer class="pane-foot">
       <button class="foot-link">Markdown editor<svg class="icon"><use href="#i-external"/></svg></button>
     </footer>
@@ -293,6 +323,9 @@
       </div>
     </div>
 
+    <div class="content-view" data-view="folder" hidden>
+      <p class="quiet-state">This folder isn’t a Git repository</p>
+    </div>
     <div class="content-view" data-view="source" hidden>
       <div class="doc-toolbar">
         <span class="toolbar-note">Temporary preview · not written to disk</span>
@@ -406,6 +439,13 @@ v.hunksDirty = <span class="c3">false</span></code></pre></div>
 
 </div>
 
+<div class="floating-menu" id="project-context" hidden>
+  <button id="remove-project">Remove project</button>
+</div>
+<div id="notice" role="status" hidden>
+  <span>Saved</span><button class="icon-btn" id="notice-close" aria-label="Dismiss notification"><svg class="icon"><use href="#i-close"/></svg></button>
+</div>
+
 <div id="mockbar">
   <strong>Mockup</strong>
   <span class="sep"></span>
@@ -415,9 +455,13 @@ v.hunksDirty = <span class="c3">false</span></code></pre></div>
     <button data-theme-value="light" aria-pressed="false">Light</button>
   </div>
   <span class="sep"></span>
-  <button class="bar-btn" id="path-btn" aria-pressed="true">Project path</button>
   <button class="bar-btn" id="type-color-btn" aria-pressed="true">Type color</button>
   <button class="bar-btn" id="syntax-btn" aria-pressed="true">Syntax colors</button>
+  <span class="sep"></span>
+  <button class="bar-btn" data-preview="empty">No changes</button>
+  <button class="bar-btn" data-preview="git">Clean Git</button>
+  <button class="bar-btn" data-preview="folder">Non-Git</button>
+  <button class="bar-btn" id="notice-demo">Notice</button>
   <span class="sep"></span>
   <button class="bar-btn" id="notes-btn" aria-pressed="false">Review notes</button>
   <div class="spacer"></div>
@@ -428,7 +472,7 @@ v.hunksDirty = <span class="c3">false</span></code></pre></div>
   <div class="notes-head"><strong>What this mockup changes</strong><button class="icon-btn" id="notes-close" title="Close"><svg class="icon"><use href="#i-close"/></svg></button></div>
   <ol class="notes-list">
     <li data-target=".pane-head"><b>01</b><div><strong>Headers</strong><span>One icon set, one order: secondary action, primary action, collapse.</span></div></li>
-    <li data-target=".pane-projects .list"><b>02</b><div><strong>Project rows</strong><span>Two lines: name and branch, then the location, elided from the left. “Not a Git repository” is gone.</span></div></li>
+    <li data-target=".pane-projects .list"><b>02</b><div><strong>Project rows</strong><span>Name, branch, location on separate lines. No empty branch row. Right-click a project to remove it from the list only.</span></div></li>
     <li data-target=".file-icon"><b>03</b><div><strong>File icons</strong><span>One document glyph replaces the arrow / “go” / “{}” mix. Type tint is optional.</span></div></li>
     <li data-target=".doc-toolbar"><b>04</b><div><strong>Document toolbar</strong><span>View controls never live in the header. Each document gets one row.</span></div></li>
     <li data-target=".diff .hunk"><b>05</b><div><strong>Hunk bar</strong><span>Range left, change count right. The decorative @@ is gone.</span></div></li>
