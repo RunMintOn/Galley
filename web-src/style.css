@@ -320,6 +320,9 @@ select { min-width: 0; border: 1px solid var(--border); border-radius: 4px; padd
 .tree-dir > summary::-webkit-details-marker { display: none; }
 .tree-dir > summary > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tree-dir > summary .icon { width: 14px; height: 14px; color: var(--subtle); }
+:is(.tree-dir, .workspace-dir) > summary .folder-open { display: none; }
+:is(.tree-dir, .workspace-dir)[open] > summary .folder-open { display: inline; }
+:is(.tree-dir, .workspace-dir)[open] > summary .folder-closed { display: none; }
 .tree-dir > div, .workspace-dir > div { margin-left: 16px; padding-left: 0; border-left: 1px solid var(--border); }
 #tree .file-icon, #changed.tree-mode .file-icon { width: 14px; height: 14px; }
 #tree .file-icon .icon, #changed.tree-mode .file-icon .icon { width: 14px; height: 14px; }

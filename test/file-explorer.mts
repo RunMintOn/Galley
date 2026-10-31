@@ -171,3 +171,29 @@ test("collapsed rails expand from their lower area and project menus stay within
     assert.deepEqual(errors, []);
   } finally { await context.close(); }
 });
+
+test("folder icons distinguish open and closed directories in Review and Git", async () => {
+  const { context, page, errors } = await pageForTest();
+  const visible = locator => locator.evaluate(element => getComputedStyle(element).display !== "none");
+  try {
+    const folder = row(page, "notes");
+    assert.equal(await visible(folder.locator(".folder-closed")), true);
+    assert.equal(await visible(folder.locator(".folder-open")), false);
+    await folder.click();
+    await row(page, "notes/deep").waitFor();
+    assert.equal(await visible(folder.locator(".folder-closed")), false);
+    assert.equal(await visible(folder.locator(".folder-open")), true);
+    assert.equal(await visible(row(page, "notes/deep").locator(".folder-closed")), true);
+    await page.locator("#tree").screenshot({ path: "test-results/file-explorer/folder-states.png" });
+    await folder.press("ArrowLeft");
+    assert.equal(await visible(folder.locator(".folder-open")), false);
+    await page.locator("#history-tab").click();
+    const gitFolder = page.locator(".workspace-dir > summary").first();
+    await gitFolder.waitFor();
+    assert.equal(await visible(gitFolder.locator(".folder-open")), true);
+    await gitFolder.click();
+    assert.equal(await visible(gitFolder.locator(".folder-closed")), true);
+    assert.equal(await visible(gitFolder.locator(".folder-open")), false);
+    assert.deepEqual(errors, []);
+  } finally { await context.close(); }
+});

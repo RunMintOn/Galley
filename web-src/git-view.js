@@ -220,7 +220,7 @@ export async function showGitHistory(container, { index, root, api, onOpenCurren
               const directory = document.createElement("details"); directory.className = "workspace-dir";
               const key = group.id + ":" + path; directory.open = !closedFolders.has(key);
               const toggle = document.createElement("summary");
-              toggle.innerHTML = '<svg class="icon workspace-folder-icon"><use href="#i-folder"/></svg>';
+              toggle.innerHTML = '<svg class="icon workspace-folder-icon"><use class="folder-closed" href="#i-folder"/><use class="folder-open" href="#i-folder-open"/></svg>';
               const name = document.createElement("span"); name.className = "workspace-folder-name"; name.textContent = part; toggle.append(name);
               const children = document.createElement("div");
               directory.append(toggle, children); parent.append(directory); directories.set(path, children);

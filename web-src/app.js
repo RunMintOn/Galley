@@ -366,7 +366,7 @@ function renderChanged() {
         if (!directories.has(prefix)) {
           const folder = document.createElement("details"); folder.className = "tree-dir"; folder.open = true;
           const title = document.createElement("summary");
-          title.innerHTML = '<svg class="icon"><use href="#i-folder"/></svg>';
+          title.innerHTML = '<svg class="icon"><use class="folder-closed" href="#i-folder"/><use class="folder-open" href="#i-folder-open"/></svg>';
           const label = document.createElement("span"); label.textContent = part; title.append(label);
           const children = document.createElement("div"); folder.append(title, children); parent.append(folder); directories.set(prefix, children);
         }

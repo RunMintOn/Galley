@@ -47,7 +47,7 @@ export function createFileExplorer({ api, root, current, expanded, fileButton, n
         let row;
         if (item.directory) {
           const details = document.createElement("details"); details.className = "tree-dir";
-          row = document.createElement("summary"); row.innerHTML = icon("folder");
+          row = document.createElement("summary"); row.innerHTML = '<svg class="icon"><use class="folder-closed" href="#i-folder"/><use class="folder-open" href="#i-folder-open"/></svg>';
           const name = document.createElement("span"); name.className = "tree-name"; name.textContent = item.name; row.append(name);
           const children = document.createElement("div"); details.append(row, children);
           details.open = expanded.has(pathHere);
