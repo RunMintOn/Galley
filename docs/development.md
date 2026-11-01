@@ -40,7 +40,7 @@ npm run verify:package
 
 `check` 包含类型检查、公共接口测试、Go 的 Node 查找与文件读写测试和网页/服务构建。只运行 Go 测试可使用 `npm run test:go`，不会打开窗口。浏览器测试使用隔离数据与无头 Chrome，不连接日用 Agent。截图和测试结果在 `test-results/`，下次运行会更新。`test:visual` 从 `dist/web` 读取网页资源；修改 `web-src` 后先运行 `npm run build`，否则截图和断言仍来自旧构建。
 
-性能测量口径、历史对照和后续调查入口见 [性能优化记录](performance.md)。`test:performance` 检查 Markdown 块复用并采样渲染及工作区接口，结果在 `test-results/performance/`；同机前后对照时单独运行，不与其他测试并发。当前旧视觉脚本的已知失败也记录在该文档，不将未执行的视觉断言视为通过。
+性能诊断、GPU/高刷新率疑问先读[性能记录的 Agent 续接](performance.md#agent-续接)，再按场景查看历史对照和复现入口。`test:performance` 检查 Markdown 块复用并采样渲染及工作区接口，结果在 `test-results/performance/`；同机前后对照时单独运行，不与其他测试并发。当前旧视觉脚本的已知失败也记录在该文档，不将未执行的视觉断言视为通过。
 
 `test:main-performance` 专测主界面文件编辑器和 Diff，检查输入时的全文转换、撤销与等长恢复、长行高亮和布局切换是否重复比较。可用 `--ref=<commit> --baseline` 在当前依赖环境中打包该提交的 `editor.js` / `diff.js` 作对照；`--profile` 保存主编辑器 CPU profile。独立 Markdown 窗口和 pi 集成的低优先级探针保存在 `.scratch/performance/research/`，不属于默认回归。
 
@@ -71,6 +71,12 @@ npm run test:desktop -- --ime=com.bytedance.inputmethod.doubaoime.pinyin
 ```
 
 上例是已验收的豆包拼音 ID，不代表所有机器都安装了它。普通按键测试临时选择 ABC，专项测试再选择指定中文输入法，避免候选态影响快捷键断言；无论成功或失败，结束时恢复测试前的输入法。`swift test/input-source.swift` 可查看当前 ID。结果与组合输入记录保存在 `test-results/desktop/`。
+
+### 原生性能测试的清理
+
+`test/diff-scroll.mts` 创建的 `startConsole` 与桌面 CLI 获取的后台服务不要假定为同一实例。实测仅关闭前者并退出测试窗口，仍会留下使用测试包资源的 Node 服务，导致下一次构建被运行保护拒绝。
+
+沿用 `test/diff-scroll-native.mts::sampleNative` 的 `finally`：入口关闭自己创建的服务；原生驱动另从本轮隔离目录的 `state/service.json` 获取服务信息并请求关闭。失败路径也清理各自拥有的资源，不用日用服务的停止命令代替测试清理。
 
 ## 构建和更新日用应用
 
