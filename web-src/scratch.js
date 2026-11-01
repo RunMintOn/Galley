@@ -6,6 +6,7 @@ import { createScratchEditor, editHistory, findInEditor } from "./editor.js";
 import { imageData, rebaseImages } from "./images.js";
 
 const $ = id => document.getElementById(id);
+document.documentElement.classList.toggle("desktop", !!window.mygo);
 const tabs = [];
 let active, nextId = 0, renderer, diff, timer;
 let editors = [];
@@ -248,5 +249,5 @@ document.addEventListener("keydown", e => {
   const name = { s: e.shiftKey ? "save-as" : "save", o: "open-file", t: "new-tab", w: "close-tab", f: "find" }[e.key.toLowerCase()] || (/^[1-9]$/.test(e.key) ? "tab:" + e.key : "");
   if (name) { e.preventDefault(); command(name); }
 });
-render();
-if (window.mygo) run(openPending)();
+if (window.mygo) await run(openPending)();
+if (!tabs.length) create("doc");

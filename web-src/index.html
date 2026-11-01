@@ -38,7 +38,7 @@
 </svg>
 <div id="boot-panel"><p id="boot-message">Opening Galley…</p><button id="retry" hidden>Retry</button></div>
 <div id="notice" role="status" aria-live="polite" hidden><span id="notice-text"></span><button id="notice-undo" hidden>Undo</button><button id="notice-close" class="icon-btn" aria-label="Dismiss notification"><svg class="icon"><use href="#i-close"/></svg></button></div>
-<div id="project-context" class="menu-items" hidden><button id="context-reveal-project">Reveal in Finder</button><button id="context-terminal-project">Open in Terminal</button><hr><button id="context-remove-project">Remove project</button></div>
+<div id="project-context" class="menu-items" hidden><button id="context-reveal-project">Reveal in Finder</button><button id="context-terminal-project">Open in Terminal</button><hr><button id="context-move-project">Move up</button><button id="context-remove-project">Remove project</button></div>
 <div id="file-context" class="menu-items" role="menu" aria-label="File actions" hidden></div>
 <dialog id="file-picker" aria-label="Go to file">
   <div class="file-picker-input"><svg class="icon"><use href="#i-search"/></svg><input id="file-query" type="text" placeholder="Go to file…" aria-label="Find a file by name or path" role="combobox" aria-controls="file-results" aria-expanded="true" aria-autocomplete="list" autocomplete="off" spellcheck="false"><kbd>esc</kbd></div>
@@ -47,7 +47,7 @@
 <main id="console">
   <section class="pane projects-pane" id="projects-pane">
     <div class="resizer" data-edge="projects" role="separator" aria-orientation="vertical" aria-controls="projects-pane files-pane" aria-valuenow="210" aria-valuemin="140" aria-valuemax="360" tabindex="0" title="Drag to resize · double-click to reset"></div>
-    <header class="pane-heading"><strong>PROJECTS <span id="project-count"></span></strong><details class="menu" id="project-menu"><summary aria-label="Project actions" title="Project actions"><svg class="icon"><use href="#i-more"/></svg></summary><div class="menu-items"><button id="move-project">Move current up</button><button id="remove-project">Remove current project</button></div></details><button id="add-project" class="icon-btn" aria-label="Add folder" title="Add folder"><svg class="icon"><use href="#i-plus"/></svg></button><button class="pane-toggle" data-collapse="projects-pane" aria-label="Collapse projects pane" title="Collapse projects pane"></button></header>
+    <header class="pane-heading"><strong>PROJECTS <span id="project-count"></span></strong><button id="add-project" class="icon-btn" aria-label="Add folder" title="Add folder"><svg class="icon"><use href="#i-plus"/></svg></button><button class="pane-toggle" data-collapse="projects-pane" aria-label="Collapse projects pane" title="Collapse projects pane"></button></header>
     <button class="rail-button" data-collapse="projects-pane" aria-label="Expand projects pane" title="Expand projects pane"></button>
     <div class="pane-body"><nav id="projects" aria-label="Projects"></nav></div>
     <footer id="watch-state"><span class="watch-dot" aria-hidden="true"></span><span id="watch-text">Local files</span></footer>

@@ -120,10 +120,10 @@ try {
   await page.locator('#changed .file-button[data-path="src/diffview.go"]').click();
   await page.waitForFunction(() => document.querySelector("#content-name")?.textContent === "src/diffview.go");
   assert.ok(await page.locator(".diff-surface .tk-k").count() > 0, "Go diff 必须有 token 颜色");
-  await page.locator("#project-menu > summary").click();
-  assert.equal(await page.getByRole("button", { name: "Remove current project", exact: true }).isVisible(), true);
+  await page.locator('.project[aria-current="true"]').click({ button: "right" });
+  assert.equal(await page.locator("#context-remove-project").isVisible(), true);
   await page.keyboard.press("Escape");
-  assert.equal(await page.getByRole("button", { name: "Remove current project", exact: true }).isVisible(), false);
+  assert.equal(await page.locator("#context-remove-project").isVisible(), false);
   await shoot("01-review");
   await page.locator('.content-pane .pane-toggle').click();
   assert.ok(await page.locator("#reply-pane").evaluate(node => node.getBoundingClientRect().width > 900));
@@ -199,9 +199,9 @@ try {
   const toolbarOverflows = await page.locator(".reply-header").evaluate(node => node.scrollWidth > node.clientWidth);
   assert.equal(toolbarOverflows, false, "窄栏工具条不能溢出");
   await shoot("10-narrow");
-  await page.locator("#project-menu > summary").click();
+  await page.locator('.project[aria-current="true"]').click({ button: "right" });
   page.once("dialog", dialog => dialog.accept());
-  await page.getByRole("button", { name: "Remove current project", exact: true }).click();
+  await page.locator("#context-remove-project").click();
   await page.waitForFunction(() => document.querySelectorAll(".project").length === 14);
   // Wait one debounce interval before an external write, so the initial tree
   // load cannot masquerade as a working watch on the newly selected project.

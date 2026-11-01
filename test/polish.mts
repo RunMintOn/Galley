@@ -33,8 +33,8 @@ test("all panes fit the 950px window before and after resizing or folding", asyn
   await page.setViewportSize({ width: 950, height: 700 });
   await page.goto(service.origin + "/#token=polish");
   await page.locator(".pane-toggle svg").first().waitFor();
-  const fits = async () => assert.ok(await page.locator("#reply-pane").evaluate(el =>
-    el.getBoundingClientRect().right <= innerWidth), "回复栏不能被窗口右边缘裁切");
+  const fits = () => page.waitForFunction(() =>
+    document.querySelector("#reply-pane").getBoundingClientRect().right <= innerWidth);
   await fits();
   await page.click(".files-pane .pane-toggle");
   await page.click(".files-pane .rail-button");
@@ -67,7 +67,6 @@ test("scratch source wraps logical lines without extra line numbers", async () =
   const page = await context.newPage();
   await page.setViewportSize({ width: 800, height: 700 });
   await page.goto(service.origin + "/scratch");
-  await page.click("#new-doc");
   const source = page.getByRole("textbox", { name: "Markdown source", exact: true });
   const text = "# 标题\n" + "这是一段需要软换行的长文本。".repeat(25) + "\n第三行";
   await source.fill(text);
@@ -84,7 +83,6 @@ test("scratch source wraps logical lines without extra line numbers", async () =
 test("scratch tabs and preview switches retain selection and undo history", async () => {
   const page = await context.newPage();
   await page.goto(service.origin + "/scratch");
-  await page.click("#new-doc");
   const source = page.getByRole("textbox", { name: "Markdown source", exact: true });
   await source.fill("alpha");
   await source.press("ArrowLeft");

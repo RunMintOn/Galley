@@ -30,7 +30,7 @@
     "test:diff-scroll": "node --experimental-strip-types test/diff-scroll.mts",
     "pretest:diff-scroll-native": "npm run build:desktop -- --e2e",
     "test:diff-scroll-native": "node --experimental-strip-types test/diff-scroll.mts --native",
-    "test:polish": "node --experimental-strip-types --test test/polish.mts",
+    "test:polish": "node --experimental-strip-types --test test/polish.mts test/sidebar-scrollbar.mts",
     "test:editor": "node --experimental-strip-types --test test/editor.mts",
     "test:files": "node --experimental-strip-types --test test/file-explorer.mts test/file-actions.test.ts",
     "pretest:desktop": "npm run build:desktop -- --e2e",

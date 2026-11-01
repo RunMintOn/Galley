@@ -139,7 +139,7 @@ func openReview(raw string) {
 			target = raw
 		}
 	}
-	review = mygo.NewWindow(mygo.WindowOptions{Title: "Galley", URL: target, Width: 1440, Height: 950, MinWidth: 950, MinHeight: 600, Page: mygo.PageOptions{TrustedOrigins: []string{service.Origin}, Session: webSession}})
+	review = mygo.NewWindow(mygo.WindowOptions{Title: "Galley", TitleBarStyle: mygo.TitleBarHidden, TrafficLightPosition: &mygo.Point{X: 12, Y: 12}, URL: target, Width: 1440, Height: 950, MinWidth: 950, MinHeight: 600, Page: mygo.PageOptions{TrustedOrigins: []string{service.Origin}, Session: webSession}})
 	configure(review)
 }
 func openScratch() {
@@ -148,7 +148,7 @@ func openScratch() {
 		scratch.Focus()
 		return
 	}
-	scratch = mygo.NewWindow(mygo.WindowOptions{Title: "Markdown Editor", URL: service.Origin + "/scratch", Width: 1280, Height: 850, MinWidth: 700, MinHeight: 500, Page: mygo.PageOptions{TrustedOrigins: []string{service.Origin}, Session: webSession}})
+	scratch = mygo.NewWindow(mygo.WindowOptions{Title: "Markdown Editor", TitleBarStyle: mygo.TitleBarHidden, TrafficLightPosition: &mygo.Point{X: 12, Y: 12}, URL: service.Origin + "/scratch", Width: 1280, Height: 850, MinWidth: 700, MinHeight: 500, Page: mygo.PageOptions{TrustedOrigins: []string{service.Origin}, Session: webSession}})
 	configure(scratch)
 }
 func targetArg(args []string) string {

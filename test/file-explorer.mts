@@ -37,6 +37,28 @@ async function pageForTest() {
   return { context, page, errors };
 }
 const row = (page, path) => page.locator(`#tree [data-path="${path}"]`);
+test("project context menu moves the right-clicked project without changing selection", async () => {
+  const { context, page, errors } = await pageForTest();
+  try {
+    assert.equal(await page.locator("#project-menu").count(), 0);
+    const projects = page.locator(".project");
+    const order = await projects.evaluateAll(rows => rows.map(row => row.dataset.root));
+    const selected = await page.locator('.project[aria-current="true"]').getAttribute("data-root");
+    await projects.nth(1).click({ button: "right" });
+    await page.locator("#context-move-project").click();
+    await page.waitForFunction(first => document.querySelector(".project").dataset.root === first, order[1]);
+    assert.equal(await page.locator('.project[aria-current="true"]').getAttribute("data-root"), selected);
+    await projects.first().click({ button: "right" });
+    assert.equal(await page.locator("#context-move-project").isDisabled(), true);
+    assert.equal(await page.locator("#context-remove-project").isVisible(), true);
+    await page.keyboard.press("Escape");
+    await projects.nth(1).click({ button: "right" });
+    await page.locator("#context-move-project").click();
+    await page.waitForFunction(first => document.querySelector(".project").dataset.root === first, order[0]);
+    assert.deepEqual(errors, []);
+  } finally { await context.close(); }
+});
+
 async function menu(page, path, label) {
   await row(page, path).click({ button: "right" });
   await page.locator("#file-context").getByRole("menuitem", { name: label, exact: true }).click();
@@ -160,11 +182,11 @@ test("collapsed rails expand from their lower area and project menus stay within
     const divider = page.locator('.resizer[data-edge="projects"]');
     await divider.focus();
     for (let index = 0; index < 4; index++) await divider.press("ArrowLeft");
-    await page.locator("#project-menu > summary").click();
-    const menu = await page.locator("#project-menu .menu-items").boundingBox();
+    await page.locator(".project").first().click({ button: "right" });
+    const menu = await page.locator("#project-context").boundingBox();
     assert.ok(menu.x >= 0 && menu.x + menu.width <= 1440, "project actions remain inside the viewport");
     await page.screenshot({ path: "test-results/file-explorer/rails-menu-folders.png" });
-    await page.locator("#project-menu > summary").click();
+    await page.keyboard.press("Escape");
     await page.locator("#history-tab").click();
     await page.locator(".workspace-dir").first().waitFor();
     assert.equal(await page.locator('.workspace-dir > summary use[href="#i-chevron"]').count(), 0);

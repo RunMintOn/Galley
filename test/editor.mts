@@ -98,7 +98,7 @@ test("reply divider drags, persists, folds and fits a narrow window", async () =
 
 // The browser exercises the real UI and IPC contract without opening native
 // dialogs or moving desktop focus. Native disk behavior is covered in Go tests.
-async function desktopPage() {
+async function desktopPage(pending = []) {
   const context = await browser.newContext({ viewport: { width: 1280, height: 850 } });
   const page = await context.newPage();
   const disk = new Map();
@@ -106,7 +106,7 @@ async function desktopPage() {
   disk.set("/documents/Existing.md", { path: "/documents/Existing.md", content: "# Existing\n\n![photo](photo.png)", version: "v1" });
   await page.exposeFunction("nativeCall", async (name, ...args) => {
     const method = name.replace("Desktop.", "");
-    if (method === "PendingDocuments") return [];
+    if (method === "PendingDocuments") return pending.splice(0);
     if (method === "PickDocuments") return [disk.get("/documents/Existing.md")];
     if (method === "PickSavePath") return pickPath;
     if (method === "ConfirmClose") return closeChoice;
@@ -127,10 +127,32 @@ async function desktopPage() {
   return { context, page, disk, writes, pick: value => pickPath = value, close: value => closeChoice = value };
 }
 
+test("Markdown window starts with one blank document or the requested file, not both", async () => {
+  for (const pending of [[], ["/documents/Existing.md"]]) {
+    const openingFile = pending.length > 0;
+    const ui = await desktopPage(pending), { page } = ui;
+    try {
+      const source = page.getByRole("textbox", { name: "Markdown source", exact: true });
+      await source.waitFor({ timeout: 3000 });
+      assert.equal(await page.getByRole("tab").count(), 1);
+      assert.equal((await source.locator(".cm-line").allTextContents()).join("\n"), openingFile ? "# Existing\n\n![photo](photo.png)" : "");
+      assert.equal(await page.evaluate(() => window.reviewDesktop.dirty()), false);
+      assert.equal(ui.writes.length, 0, "打开窗口不写入文件");
+      assert.equal(await page.locator("#scratch-toolbar").evaluate(el => {
+        const icons = [...el.querySelectorAll(":scope > button .icon, :scope > .settings > summary .icon")];
+        const centers = icons.map(icon => { const box = icon.getBoundingClientRect(); return box.y + box.height / 2; });
+        return Math.max(...centers) - Math.min(...centers) < 0.5;
+      }), true, "顶部工具图标保持同一水平中心");
+      await page.setViewportSize({ width: 700, height: 500 });
+      assert.equal(await page.locator("#scratch-toolbar").evaluate(el => el.scrollWidth <= el.clientWidth && el.offsetHeight === 40), true);
+      await page.screenshot({ path: `test-results/editor/startup-${openingFile ? "file" : "blank"}.png` });
+    } finally { await ui.context.close(); }
+  }
+});
+
 test("new document pastes a JPEG, previews immediately, then saves Markdown and its resource", async () => {
   const ui = await desktopPage(), { page } = ui;
   try {
-    await page.click("#new-doc");
     const source = page.getByRole("textbox", { name: "Markdown source", exact: true });
     await source.fill("# Pasted image\n");
     await source.press("ControlOrMeta+End");

@@ -15,6 +15,13 @@ body { height: 100dvh; overflow: hidden; display: flex; flex-direction: column; 
 #scratch-toolbar button:hover { background: var(--hover); color: var(--ink); }
 #scratch-toolbar button[aria-pressed=true] { background: var(--selected); color: var(--ink); }
 #scratch-toolbar .icon { width: 14px; height: 14px; }
+#scratch-toolbar > .settings { display: flex; align-items: center; }
+html.desktop #scratch-toolbar {
+  padding-left: calc(var(--mygo-titlebar-inset-left, 78px) + 10px);
+  flex-wrap: nowrap; --app-region: drag; user-select: none;
+}
+html.desktop #scratch-toolbar strong { display: none; }
+html.desktop #scratch-toolbar :is(button, summary, input, .menu-items) { --app-region: no-drag; }
 /* Group the quiet actions the same way the console toolbar does: add, file
    actions, layout. */
 #scratch-toolbar #open-doc, #scratch-toolbar #tabs-layout { margin-left: 6px; }

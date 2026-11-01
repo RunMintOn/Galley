@@ -5,8 +5,11 @@ import { showGitHistory } from "./git-view.js";
 import { setupTheme, setupPreviewPreference, defaultPreview } from "./theme.js";
 import { imageData, projectImage, relativeFilePath, isImagePath, imagePreview } from "./images.js";
 import { createFileExplorer } from "./file-explorer.js";
+import { setupOverlayScrollbars } from "./overlay-scrollbar.js";
 
 const $ = id => document.getElementById(id);
+document.documentElement.classList.toggle("desktop", !!window.mygo);
+setupOverlayScrollbars(document.querySelectorAll(".pane > .pane-body"));
 const params = new URLSearchParams(location.hash.slice(1));
 if (params.get("token")) sessionStorage.setItem("review-token", params.get("token"));
 const token = sessionStorage.getItem("review-token") || "";
@@ -181,8 +184,6 @@ function refreshBranch(root) {
 }
 function renderProjects() {
   $("project-count").textContent = state.projects.length;
-  $("move-project").disabled = state.projects.findIndex(p => p.root === state.root) <= 0;
-  $("remove-project").disabled = !state.root;
   for (const id of ["new-file", "new-folder", "find-file", "collapse-tree"]) $(id).disabled = !state.root;
   const existing = new Map([...$("projects").children].map(row => [row.dataset.root, row]));
   const rows = state.projects.map(p => {
@@ -195,6 +196,7 @@ function renderProjects() {
     b.oncontextmenu = event => {
       event.preventDefault();
       contextProject = p.root;
+      $("context-move-project").disabled = state.projects.findIndex(project => project.root === p.root) === 0;
       $("project-context").hidden = false;
       $("project-context").style.left = Math.min(event.clientX, innerWidth - $("project-context").offsetWidth) + "px";
       $("project-context").style.top = Math.min(event.clientY, innerHeight - $("project-context").offsetHeight) + "px";
@@ -291,7 +293,7 @@ $("add-project").onclick = run(async () => {
 document.addEventListener("click", e => {
   $("project-context").hidden = true;
   for (const menu of document.querySelectorAll("details.menu[open]")) {
-    if (!menu.contains(e.target) || (menu.id === "project-menu" && e.target.closest("button"))) menu.open = false;
+    if (!menu.contains(e.target)) menu.open = false;
   }
 });
 async function removeProject(root) {
@@ -307,12 +309,11 @@ async function removeProject(root) {
   await refresh();
   if (current) { await loadTree(); updateWatch(); }
 }
-$("remove-project").onclick = run(() => removeProject(state.root));
 $("context-remove-project").onclick = run(() => removeProject(contextProject));
 $("context-reveal-project").onclick = run(() => api("files/system", { root: contextProject, action: "reveal" }));
 $("context-terminal-project").onclick = run(() => api("files/system", { root: contextProject, action: "terminal" }));
-$("move-project").onclick = run(async () => {
-  const roots = state.projects.map(p => p.root); const at = roots.indexOf(state.root);
+$("context-move-project").onclick = run(async () => {
+  const roots = state.projects.map(p => p.root); const at = roots.indexOf(contextProject);
   if (at <= 0) return;
   [roots[at - 1], roots[at]] = [roots[at], roots[at - 1]];
   await api("projects/order", { roots }); await refresh();
@@ -660,7 +661,8 @@ function limits(edge) {
 }
 function layoutPanes() {
   const total = $("console").clientWidth;
-  let p = collapsed("projects-pane") ? 40 : projectsWidth;
+  const projectRail = 40 + (window.mygo ? cssWidth("--mygo-titlebar-inset-left", 78) : 0);
+  let p = collapsed("projects-pane") ? projectRail : Math.max(MIN_WIDTH.projects, projectsWidth);
   let f = collapsed("files-pane") ? 40 : filesWidth;
   let r = collapsed("reply-pane") ? 40 : replyWidth;
   if (!collapsed("content-pane")) {
@@ -675,7 +677,7 @@ function layoutPanes() {
       f -= reduce; overflow -= reduce;
     }
     if (overflow > 0) {
-      const projectsMin = collapsed("projects-pane") ? 40 : MIN_WIDTH.projects;
+      const projectsMin = collapsed("projects-pane") ? projectRail : MIN_WIDTH.projects;
       const reduce = Math.min(overflow, Math.max(0, p - projectsMin));
       p -= reduce;
     }
@@ -683,7 +685,7 @@ function layoutPanes() {
   if (collapsed("content-pane") && collapsed("reply-pane") && !collapsed("files-pane")) f = total - p - 80;
   effective.projects = p; effective.files = f; effective.reply = r;
   const columns = [
-    collapsed("projects-pane") ? "40px" : p + "px",
+    p + "px",
     collapsed("files-pane") ? "40px" : f + "px",
     collapsed("content-pane") ? "40px" : "minmax(" + MIN_WIDTH.content + "px,1fr)",
     collapsed("reply-pane") ? "40px" : collapsed("content-pane") ? "minmax(360px,1fr)" : r + "px",

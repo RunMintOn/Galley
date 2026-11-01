@@ -52,6 +52,8 @@ npm run verify:package
 
 `test:files` 覆盖新建、保留草稿的重命名、跨项目复制/移动、废纸篓与撤回、同名冲突、快速找文件、展开/折叠记忆和回到应用时的项目行高度。使用隔离目录与无头 Chrome；macOS 废纸篓测试只操作测试创建的文件，不打开 Finder。截图在 `test-results/file-explorer/`。
 
+`test:polish` 另覆盖侧栏覆盖式滚动条的零占位、自动隐藏与拖动，以及项目文字固定缩进和页面顶部图标对齐；截图在 `test-results/sidebar/`。`test:editor` 覆盖独立窗口默认空白 Markdown 标签、文件启动不额外新建标签和最小窗口工具栏；启动截图在 `test-results/editor/startup-{blank,file}.png`。这些浏览器替身不验证原生红黄绿按钮的像素位置。
+
 ## 桌面测试
 
 原生测试会打开独立测试窗口、改变焦点并发送真实按键。执行前说明影响并取得用户许可，测试期间避免切换其他应用。首次可能需要给实际运行测试的终端或 Agent 宿主授予 macOS“辅助功能”权限；权限被拒绝时按系统提示处理，不绕过授权。
