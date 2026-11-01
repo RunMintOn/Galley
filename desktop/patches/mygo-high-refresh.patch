@@ -1,0 +1,23 @@
+--- a/internal/darwin/window.go
++++ b/internal/darwin/window.go
+@@ -468,3 +468,20 @@
+ 	prefs := send(cfg, "preferences")
++	// WebKit snapshots this preference when the view is created. Match the
++	// display's refresh rate for every page, not just a particular scroller.
++	highRefresh := false
++	if respondsTo(class("WKPreferences"), "_features") && respondsTo(prefs, "_setEnabled:forFeature:") {
++		features := send(class("WKPreferences"), "_features")
++		for i, n := uintptr(0), uintptr(send(features, "count")); i < n; i++ {
++			feature := send(features, "objectAtIndex:", i)
++			if respondsTo(feature, "key") && goString(send(feature, "key")) == "PreferPageRenderingUpdatesNear60FPSEnabled" {
++				send(prefs, "_setEnabled:forFeature:", 0, uintptr(feature))
++				highRefresh = true
++				break
++			}
++		}
++	}
++	if !highRefresh {
++		log.Print("mygo: high-refresh preference unavailable; keeping WebKit default pacing")
++	}
+ 	send(prefs, "setValue:forKey:", uintptr(nsBool(o.DevTools)), uintptr(nsString("developerExtrasEnabled")))
+ 	send(prefs, "setValue:forKey:", uintptr(nsBool(true)), uintptr(nsString("allowFileAccessFromFileURLs")))

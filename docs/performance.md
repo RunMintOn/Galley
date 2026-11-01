@@ -4,15 +4,17 @@
 
 ## 当前优先级
 
-2026-11-01 用户明确：**主界面的文件编辑器和 Diff 优先；pi 集成与独立 Markdown 编辑窗口不优先。** 后两项仅保留已完成的摸排与探针，不继续实现。后续选题按这一优先级排序。
+2026-11-01 用户明确：**主界面的文件编辑器和 Diff 优先；pi 集成与独立 Markdown 编辑窗口不优先。** 后两项的专属优化暂停。后续授权的统一 WebView 高刷设置覆盖所有窗口，不代表恢复这些专属优化。
 
 ## Agent 续接
 
 - **已确认的修复**：长 Diff 的特定绘制退化已通过单变量对照验证，原因、复现和回归见[第三批](#2026-11-01第三批长-diff-滚动绘制)。继续排查其他顺滑度问题时复用该夹具，不重新假定存在应用懒加载。
-- **未决体验**：用户在修复后仍主观反馈整体不如原生顺滑。尚未在同一高刷显示器、相同内容和输入方式下，与 VS Code 对照实际呈现帧率及输入到画面变化的延迟。这与已关闭的具体绘制缺陷是不同验收目标。
-- **测量边界**：现有约 17ms 的 rAF 结果只描述 JavaScript 回调节奏，既不是锁定 60fps 的证据，也不能证明达到屏幕 120Hz 或“原生般顺滑”。下一步先建立上述呈现与延迟对照，再决定优化点；尚无证据支持直接更换 UI 架构。
-- **渲染配置核实**：`desktop/main.go::openReview` 使用 WKWebView 页面；本次检查 MyGo 的 `internal/darwin/window.go::createWebView`，未发现关闭硬件加速或显式高刷新率配置。配置检查和系统中存在 WebKit GPU 进程，不等于已核验该页面每帧的 GPU 使用或呈现轨迹。
+- **未决体验**：用户在透明度绘制修复后仍反馈整体不如原生顺滑；高刷接入后的主观体验尚无验收结论。真实触控板、同机 VS Code 对照、输入到画面变化的延迟仍未测，不因具体任务关闭而视为已解决。
+- **测量边界**：旧包约 17ms、新包约 8ms 的 rAF 结果描述 JavaScript 调度，不等于屏幕呈现 FPS。默认异步滚动也可超过 60 次画面变化/秒；研究探针的窗口合成输出同样不是面板扫描。继续排查时按症状选对应指标，勿重新用 rAF 推断整个应用锁帧。
+- **渲染配置**：页面由 `desktop/main.go::openReview` 创建。固定 MyGo 上游原本没有覆盖高刷偏好；正式构建现在通过 `desktop/patches/mygo-high-refresh.patch` 在创建期接入。配置检查和存在 WebKit GPU 进程都不能代替每帧 GPU／呈现测量。
 - **API 适用范围**：本次所用 MyGo 的 `internal/darwin/surface.go::SetFrameRate` 调节自绘 surface 的 display link，不是当前 WKWebView 页面的高刷开关。依赖版本见 `desktop/go.mod`；升级后重新核对，勿照搬自绘 surface 的设置。
+- **路线选择**：保留 WebView，优先解除已验证的页面更新策略限制；没有选择局部或整体原生迁移。A/B/A、原生 Diff 对照与探针踩坑见 [120Hz 调查](../.scratch/performance/research/high-refresh.md)，升级框架或重做呈现测量时再读。
+- **已交付状态**：统一高刷覆盖主窗口与独立编辑窗口，产品回归通过，正式包已正常重建并重开。数据及发布凭证以[第四批](#2026-11-01第四批统一启用-webview-高刷)为准，无待执行的发布或授权步骤。
 
 ## 工作方式
 
@@ -158,6 +160,22 @@ npm run test:diff-scroll-native -- --ref=161e775 --baseline
 产物在 `test-results/performance/`：`diff-scroll-{before,after}.json`、`diff-scroll-wk-{before,after}.json`、`diff-scroll.png`。旧代码先在浏览器的 token 绘制断言、原生的往返跟随断言失败；修复后通过。额外通过 `check`、`test:diff`、`test:redesign`、`test:e2e`、`test:main-performance`。旧 `test:visual` 断言未处理，本批未重跑，不计为通过。
 
 正式应用已正常退出，停止没有活跃 Agent 会话的旧服务后重建并重开；没有强制关闭或放弃草稿。构建 `7685ec19f2adc8e2` 与源码指纹一致，网页返回 200，已确认实际提供的 CSS 含修复，签名复查通过。
+
+## 2026-11-01：第四批，统一启用 WebView 高刷
+
+用户授权使用已验证的近 60fps 偏好开关，覆盖所有带滚动的页面，不进行原生重写。`scripts/build-desktop.mjs` 在固定 MyGo 的私有构建副本上应用 `desktop/patches/mygo-high-refresh.patch`，在 WKWebView 创建前关闭 `PreferPageRenderingUpdatesNear60FPSEnabled`。正式与测试包使用相同流程；不修改模块缓存、仓库依赖声明或 Safari／系统设置。私有选择器或特征不存在时保留默认行为并记录警告。
+
+### 验证
+
+- 先添加 `test:desktop -- --high-refresh` 并运行旧包：主窗口 rAF 中位数 17ms、p95 18ms，按预期失败。
+- 新包在已解锁、可见且有焦点的产品窗口采样：主窗口与独立编辑窗口各 119 个预热后间隔样本，中位数均 **8ms**、p95 均 **9ms**。这是页面更新调度，不是面板呈现帧率。
+- 完整桌面回归通过：原生菜单、键盘、目录选择、保存取消与落盘、再次保存、Finder 打开、撤销、缩放、关闭保护、单实例与后台生命周期。817,780 字节主编辑器的三次输入到绘制机会为 39 / 28 / 128ms；不将高刷配置等同于所有输入成本已解决。没有重跑中文输入法专项。
+- 真实 5,000 行长 Diff 往返两轮通过：rAF 中位数均 8ms、p95 均 10ms，最大 10 / 11ms，无超过 25ms 的已采样间隔；均滚动至 6,000px 后回到顶部，内容节点与文本无变化。
+- 另通过 `check`（17 项 Node 测试、Go 测试、类型检查、构建）、浏览器 `test:diff-scroll` 与差异检查。未重跑旧 `test:visual`，其既有布局断言问题不计为通过。
+
+原始结果为 `test-results/desktop/result.json` 和 `test-results/performance/diff-scroll-wk-after.json`，原有命令可重建。测试中途曾锁屏，确认 `loginwindow` 为前台后暂停；解锁后重跑通过，没有使用隐藏窗口的采样验收。
+
+正式应用已正常退出、停止旧服务、重建并重新打开，未强制结束或丢弃草稿。停止前无 Agent 会话；重启后仍为 7 个项目、0 个会话，健康与网页均返回 200，正式包签名校验通过。原生二进制 SHA-256 为 `eb4fa6200eff21c091ee15b554884ac090d2c57433eaf67a27ff6ca406a41586`。本次未改网页／服务源码，因此后端 build ID 仍为 `7685ec19f2adc8e2`，不是原生外壳更新的独立证据。
 
 ## 后续候选：主界面优先，先测量
 

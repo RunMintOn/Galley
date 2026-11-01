@@ -4,6 +4,11 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { spawn, execFileSync } from "node:child_process";
 import net from "node:net";
+const highRefresh=process.argv.includes("--high-refresh");
+if(highRefresh){
+ const locked=execFileSync("swift",["-e",'import CoreGraphics; let state=CGSessionCopyCurrentDictionary() as? [String:Any] ?? [:]; print(state["CGSSessionScreenIsLocked"] as? Bool == true)'],{encoding:"utf8"}).trim();
+ assert.notEqual(locked,"true","高刷桌面验证需要解锁电脑；隐藏窗口不能证明前台刷新率");
+}
 const directory=await mkdtemp(join(tmpdir(),"review-desktop-"));
 const app=resolve("dist-desktop-test/Galley Test.app/Contents/MacOS/Galley");
 const socket=join(directory,"automation.sock"), state=join(directory,"state");
@@ -13,6 +18,7 @@ const previousInputSource=inputSource();
 const child=spawn(app,[],{env:{...process.env,REVIEW_CONSOLE_STATE:state,REVIEW_CONSOLE_DESKTOP_TEST:"1",MYGO_AUTOMATION:socket},stdio:["ignore",log,log]});
 const wait=async(fn)=>{let last;for(let i=0;i<100;i++){try{const v=await fn();if(v)return v;}catch(e){last=e;}await new Promise(r=>setTimeout(r,100));}throw last||new Error("desktop wait timed out")};
 const imeSource=process.argv.find(arg=>arg.startsWith("--ime="))?.slice(6);
+const animationSamples=[];
 let connection, service, nativeIME=false;
 try {
  connection=await wait(()=>new Promise((ok,no)=>{const s=net.createConnection(socket);s.once("connect",()=>ok(s));s.once("error",no)}));
@@ -28,8 +34,37 @@ try {
  await post("register",{cwd:root,sessionId:"desktop-test",title:"Desktop fixture"});await post("round",{id:"r1",sessionId:"desktop-test",outcome:"completed",end:1});
  const main=await wait(async()=>{const w=(await call("windows")).windows[0];return w&&await evaluate(w.id,"!!window.reviewDesktop")&&w});
  const system=script=>execFileSync("osascript",["-e",`tell application "System Events"\n tell (first application process whose unix id is ${child.pid})\n ${script}\n end tell\nend tell`],{encoding:"utf8",timeout:10000}).trim();
+ const checkHighRefresh=async(window,name)=>{
+  if(!highRefresh)return;
+  system("set frontmost to true");
+  await wait(async()=>{
+   const title=JSON.stringify(await evaluate(window,"document.title"));
+   if(system('return exists window '+title)!=="true")return false;
+   system('set frontmost to true\nperform action "AXRaise" of window '+title);
+   return evaluate(window,"document.hasFocus() && document.visibilityState==='visible'");
+  });
+  const sample=await evaluate(window,`(async()=>{
+   const marker=document.createElement('div');
+   marker.style.cssText='position:fixed;right:30px;top:100px;width:80px;height:80px;z-index:999999;pointer-events:none';
+   document.body.append(marker);
+   const frames=[];let previous;
+   try{
+    for(let i=0;i<150;i++)await new Promise(resolve=>requestAnimationFrame(now=>{
+     marker.style.backgroundColor='rgb('+i+',80,130)';
+     if(previous!==undefined&&i>30)frames.push(now-previous);
+     previous=now;resolve();
+    }));
+    frames.sort((a,b)=>a-b);
+    return {p50:frames[Math.floor(frames.length*.5)],p95:frames[Math.floor(frames.length*.95)],frames:frames.length};
+   }finally{marker.remove()}
+  })()`);
+  animationSamples.push({name,...sample});
+  console.log(JSON.stringify({highRefresh:name,...sample}));
+  assert.ok(sample.p50<12.5,name+" 在本机 120Hz 屏的持续更新不得仍以约 60Hz 调度；不是屏幕呈现 FPS 断言");
+ };
  await mkdir(join(directory,"picked"));const picked=await realpath(join(directory,"picked"));
  await call("menu",{window:main.id,path:["File","Galley"]});
+ await checkHighRefresh(main.id,"review");
  await wait(()=>evaluate(main.id,"!!document.querySelector('#tree [data-path=\"large.ts\"]')"));
  await evaluate(main.id,"document.querySelector('#tree [data-path=\"large.ts\"]').click()");
  await wait(()=>evaluate(main.id,"!!document.querySelector('#content .cm-content')"));
@@ -68,6 +103,7 @@ try {
  await call("menu",{window:main.id,path:["File","Markdown Editor"]});
  const scratch=await wait(async()=>(await call("windows")).windows.find(w=>w.id!==main.id));
  await wait(()=>evaluate(scratch.id,"!!window.reviewDesktop"));
+ await checkHighRefresh(scratch.id,"scratch");
  const raiseScratch=async()=>system('set frontmost to true\nperform action "AXRaise" of window '+JSON.stringify(await evaluate(scratch.id,"document.title")));
  await call("menu",{window:scratch.id,path:["File","New Markdown Tab"]});
  await wait(()=>evaluate(scratch.id,"document.querySelectorAll('[role=tab]').length===1"));
@@ -224,7 +260,7 @@ try {
   return false;
  });
  assert.equal((await fetch(service.origin+"/health")).status,200,"退出外壳不停止后台服务");
- const result={passed:true,directory,screenshots:shots,shellRSSKiB:Number(memory),nativeMenu:true,nativeKeyboard:true,nativeZoom:true,nativeFolderPicker:true,nativeFileSave:true,nativeFinderOpen:true,nativeMainEditor:{bytes:Buffer.byteLength(mainEditorText),samples:mainEditorSamples,undoClean:true,input:"Native navigation, then execCommand in actual main-window CodeMirror; not an IME timing measurement"},nativePreview:{bytes:Buffer.byteLength(performanceText),codeBlocks:1600,samples:nativePreview,input:"execCommand in real WKWebView; includes 150ms debounce, not an IME timing measurement"},nativeIME,singleInstance:true,backgroundServiceSurvives:true};
+ const result={passed:true,directory,screenshots:shots,shellRSSKiB:Number(memory),animationSamples,nativeMenu:true,nativeKeyboard:true,nativeZoom:true,nativeFolderPicker:true,nativeFileSave:true,nativeFinderOpen:true,nativeMainEditor:{bytes:Buffer.byteLength(mainEditorText),samples:mainEditorSamples,undoClean:true,input:"Native navigation, then execCommand in actual main-window CodeMirror; not an IME timing measurement"},nativePreview:{bytes:Buffer.byteLength(performanceText),codeBlocks:1600,samples:nativePreview,input:"execCommand in real WKWebView; includes 150ms debounce, not an IME timing measurement"},nativeIME,singleInstance:true,backgroundServiceSurvives:true};
  await writeFile(join(shots,"result.json"),JSON.stringify(result,null,2));console.log(JSON.stringify(result));
 } finally {
  connection?.destroy();if(child.exitCode===null)child.kill("SIGKILL");

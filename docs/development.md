@@ -58,11 +58,15 @@ npm run verify:package
 
 ```sh
 npm run test:desktop
+# 仅在已解锁的 120Hz 桌面执行高刷专项；仍包含完整桌面回归：
+npm run test:desktop -- --high-refresh
 # 独立运行的真实长 Diff 滚动回归：
 npm run test:diff-scroll-native
 ```
 
 该命令自动构建带自动化能力的测试包，放在 `dist-desktop-test/Galley Test.app`。测试使用独立数据目录与内存页面会话，结束时关闭自己的进程和服务。它不会覆盖 `dist-desktop/Galley.app`，测试后不必补做发布构建。
+
+`--high-refresh` 在主窗口与独立 Markdown 窗口中采样持续页面更新，检查是否仍以约 60Hz 调度。它有意针对 120Hz 实机，不在 60Hz 显示器运行；rAF 结果不冒充屏幕呈现帧率。锁屏时直接拒绝测试，不能用后台窗口样本验收。结果随桌面回归保存在 `test-results/desktop/result.json` 的 `animationSamples`。
 
 真实中文候选专项可指定本机已启用的输入法：
 
@@ -89,11 +93,13 @@ open "dist-desktop/Galley.app"
 
 发布构建自动包含网页和服务构建、Go 编译与本机签名校验，不复制 Node、Node 许可证或 `runtime.json`。先在独立目录完成编译和签名，成功后才替换正式产物；失败时旧应用保持不变。构建接受 Node ≥22.19.0，`.node-version` 仍固定推荐开发版本。运行 `.app` 需要本机已有 Node ≥22.19.0，不需要 Go。
 
+正式包与测试包均对固定 MyGo 的临时副本应用 `desktop/patches/mygo-high-refresh.patch`，使用临时 modfile 编译，不修改模块缓存或仓库依赖声明。高刷覆盖所有页面；私有接口不可用时保留 WebKit 默认行为。升级 MyGo 或修改此构建步骤前，读[高刷接入约束](../.scratch/performance/research/high-refresh.md#接入与构建约束)，再跑高刷专项。
+
 分发 DMG 使用 UDZO 压缩；当前仍为本机 ad-hoc 签名，未做开发者签名或公证，下载后可能被 Gatekeeper 拦截。默认产物对应构建机器的 CPU 架构，不是 Universal 包；分享时需注明 Apple Silicon 或 Intel。
 
 若目标应用或它的后台服务仍在使用产物，构建会提前拒绝覆盖。按以下顺序更新：
 
-1. 正常退出 Galley。让关闭保护处理文件草稿和非空临时文档；取消退出时保留内容，不强制杀进程。
+1. 正常退出 Galley。让关闭保护处理文件草稿和非空临时文档；取消退出时保留内容，不强制杀进程。`osascript` 的 Quit 可能因异步关闭拦截先返回 `-128`，随后应用仍正常退出；以原应用进程是否退出确认状态，不只凭 Apple Event 返回码继续构建或认定取消。
 2. 运行 `npm run stop` 停止旧审查台服务。它不终止 pi Agent，也不删除项目和轮次数据。有活跃会话时先说明这次短暂中断。
 3. 运行 `npm run build:desktop`，再用上面的 `open` 命令启动。
 4. 若本次更新了已安装的 pi 扩展，相关活跃 pi 会话还需要 `/reload`。没有活跃会话时不需要补做。

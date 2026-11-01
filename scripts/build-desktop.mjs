@@ -1,4 +1,4 @@
-import { cp, mkdir, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { resolve, join } from "node:path";
 import { execFileSync } from "node:child_process";
 
@@ -22,8 +22,23 @@ try {
   await mkdir(join(contents, "MacOS"), { recursive: true }); await mkdir(resources, { recursive: true });
   await cp("dist", join(resources, "backend"), { recursive: true });
   const go = process.env.GO_BINARY || "go";
+  // MyGo has no creation-time WebKit feature hook. Patch a private build copy,
+  // never the shared module cache; release and test apps use the same source.
+  const mygo = execFileSync(go, ["list", "-m", "-f", "{{.Dir}}", "github.com/egoist/mygo"], { cwd: "desktop", encoding: "utf8" }).trim();
+  const localMygo = join(staging, "mygo"), modfile = join(staging, "desktop.mod");
+  await cp(mygo, localMygo, { recursive: true });
+  // Module-cache directories are read-only too; the copy must permit patch
+  // replacement files and cleanup, not just writes to the original file.
+  execFileSync("chmod", ["-R", "u+w", localMygo]);
+  execFileSync("patch", ["--batch", "--forward", "-p1", "-d", localMygo, "-i", resolve("desktop/patches/mygo-high-refresh.patch")], { stdio: "inherit" });
+  if (!(await readFile(join(localMygo, "internal/darwin/window.go"), "utf8")).includes("highRefresh := false")) {
+    throw new Error("MyGo 高刷补丁未应用，不生成缺少该配置的桌面包");
+  }
+  await cp("desktop/go.mod", modfile);
+  await cp("desktop/go.sum", join(staging, "desktop.sum"));
+  execFileSync(go, ["mod", "edit", `-modfile=${modfile}`, `-replace=github.com/egoist/mygo=${localMygo}`], { cwd: "desktop", stdio: "inherit" });
   const tags = e2e ? ["-tags", "e2e"] : [];
-  execFileSync(go, ["build", ...tags, "-trimpath", "-o", join(contents, "MacOS/Galley"), "."], { cwd: "desktop", stdio: "inherit" });
+  execFileSync(go, ["build", `-modfile=${modfile}`, ...tags, "-trimpath", "-o", join(contents, "MacOS/Galley"), "."], { cwd: "desktop", stdio: "inherit" });
   await mkdir(join(resources, "AppIcon.iconset"));
   for (const [size, file] of [[16, "icon_16x16"], [32, "icon_16x16@2x"], [32, "icon_32x32"], [64, "icon_32x32@2x"], [128, "icon_128x128"], [256, "icon_128x128@2x"], [256, "icon_256x256"], [512, "icon_256x256@2x"], [512, "icon_512x512"], [1024, "icon_512x512@2x"]]) {
     execFileSync("sips", ["-z", String(size), String(size), "desktop/AppIcon.png", "--out", join(resources, "AppIcon.iconset", file + ".png")], { stdio: "ignore" });
