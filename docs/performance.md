@@ -108,6 +108,49 @@ npm run test:main-performance -- --profile
 
 在用户调整优先级前，已观察到 20×256KiB 未变化文档每轮通过桥返回 5MiB 正文；20 个项目、各 1,000 轮的忙闲状态更新会读取约 1.2MB 元数据并重建轮次选项。只有基线，没有产品优化。票据 `03` / `04` 标为低优先级，探针及运行边界整理到 `.scratch/performance/research/README.md`，没有加入默认 npm 测试。
 
+## 2026-11-01：第三批，长 Diff 滚动绘制
+
+用户反馈第三栏长 Git Diff 往返滚动时像分片重新出现，滚动不跟手。不能根据这种观感直接认定为应用懒加载。
+
+### 复现与根因
+
+隔离 Git 仓库中的 2,500 行 TypeScript 全部修改，真实工作区第三栏显示 5,000 行 Unified Diff、45,000 个语法高亮 token。每轮用相同脚本向下、向上各滚动约 6,000px，页面不发生文件修改。
+
+- Chrome 往返过程中没有 Git 接口请求、内容节点增删或文本变化，布局次数也为零。源码没有这条滚动路径的懒加载或虚拟列表；排除本夹具中反复获取/计算内容的解释。
+- 真实 WKWebView 严重落后于系统滚轮输入。单变量 A/B/A：保留 token 的 `opacity: .92` 时严重卡顿；仅取消透明度后恢复稳定调度；改回透明度后再次卡顿。改表格的 `border-collapse` 没有解决问题。
+- 根因在 `web-src/style.css` 的逐 token 透明度。它为大量碎片文字引入透明度绘制分组，放大 WebKit 的长表格绘制成本。本次只删除这条规则，保留所有高亮节点和颜色分类、全文、折叠与滚动结构，没有增加另一套懒加载或虚拟列表。
+
+### 同口径结果
+
+真实 macOS 15.7.9 / WKWebView、同一系统像素滚轮脚本，两轮采样。旧代码帧样本很少，因为页面已经跟不上；以下为放大的合成负载，不是生产百分位数：
+
+| 指标 | 优化前，两轮 | 优化后，两轮 |
+| --- | --- | --- |
+| 每轮约 5–6 秒内的 rAF 回调数 | 10 / 10 | 302 / 293 |
+| 帧间隔中位数 | 659 / 768 ms | 17 / 17 ms |
+| 超过 25ms 的已采样帧间隔 | 10 / 10 | 0 / 0 |
+| 往返输入后的滚动位置 | 仍留在下方 | 均回到顶部 |
+| 内容增删 / 文本变化 | 0 / 0 | 0 / 0 |
+
+Chrome 的两轮帧间隔 p95 从 33.3 / 33.3ms 降到 16.8 / 16.7ms，完整高亮 token 数仍为 45,000。Chrome 和 WKWebView 分开报告；没有把 rAF 采样当成屏幕实际呈现 FPS，也没有据此宣称已达到显示器的 120Hz。CGEvent 输入经过系统事件链，但不是手指触控板实测。
+
+### 回归与复现
+
+```sh
+npm run check
+npm run test:diff-scroll
+npm run test:diff-scroll-native
+# 只叠加旧共享样式，预期回归断言失败：
+npm run test:diff-scroll -- --ref=161e775 --baseline
+npm run test:diff-scroll-native -- --ref=161e775 --baseline
+```
+
+浏览器断言完整高亮不会为每个 token 建立透明度分组，往返滚动不请求 Git、不替换内容。原生回归还检查真实滚动到远处再回到顶部、原节点保留，以及调度不再持续落后于静态页面；WebKit 的异步滚动可能不向 JavaScript 转发 `wheel`，所以不以该事件数量判断滚动是否生效。
+
+产物在 `test-results/performance/`：`diff-scroll-{before,after}.json`、`diff-scroll-wk-{before,after}.json`、`diff-scroll.png`。旧代码先在浏览器的 token 绘制断言、原生的往返跟随断言失败；修复后通过。额外通过 `check`、`test:diff`、`test:redesign`、`test:e2e`、`test:main-performance`。旧 `test:visual` 断言未处理，本批未重跑，不计为通过。
+
+正式应用已正常退出，停止没有活跃 Agent 会话的旧服务后重建并重开；没有强制关闭或放弃草稿。构建 `7685ec19f2adc8e2` 与源码指纹一致，网页返回 200，已确认实际提供的 CSS 含修复，签名复查通过。
+
 ## 后续候选：主界面优先，先测量
 
 这些是源码观察，不是已确认瓶颈或已承诺收益：

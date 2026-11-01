@@ -34,6 +34,7 @@ npm run test:diff
 npm run test:visual
 npm run test:performance
 npm run test:main-performance
+npm run test:diff-scroll
 npm run verify:package
 ```
 
@@ -42,6 +43,8 @@ npm run verify:package
 性能测量口径、历史对照和后续调查入口见 [性能优化记录](performance.md)。`test:performance` 检查 Markdown 块复用并采样渲染及工作区接口，结果在 `test-results/performance/`；同机前后对照时单独运行，不与其他测试并发。当前旧视觉脚本的已知失败也记录在该文档，不将未执行的视觉断言视为通过。
 
 `test:main-performance` 专测主界面文件编辑器和 Diff，检查输入时的全文转换、撤销与等长恢复、长行高亮和布局切换是否重复比较。可用 `--ref=<commit> --baseline` 在当前依赖环境中打包该提交的 `editor.js` / `diff.js` 作对照；`--profile` 保存主编辑器 CPU profile。独立 Markdown 窗口和 pi 集成的低优先级探针保存在 `.scratch/performance/research/`，不属于默认回归。
+
+`test:diff-scroll` 在真实 Git 第三栏中显示 5,000 行 Diff，检查高亮、往返滚动时的内容节点与接口请求，并采样帧间隔。`test:diff-scroll-native` 自动构建测试包，通过系统像素滚轮事件测试真实 WKWebView；会占用焦点、移动鼠标，结束时恢复鼠标位置。两者均单独运行，不与其他测试并发。`--ref=<commit> --baseline` 仅叠加指定提交的 `web-src/style.css` 做样式对照，不是完整历史构建。rAF 间隔不是屏幕实际呈现帧率；实机时延门槛不作为跨硬件保证。
 
 `test:editor` 覆盖文件树预览、相对图片、默认预览、栏宽拖动与恢复、剪贴板 JPEG、保存取消、关闭保存、查找替换和外部修改。原生对话框使用 IPC 替身，不打开系统面板；磁盘写入与冲突另由 Go 测试覆盖。截图在 `test-results/editor/`。`test:desktop` 实测系统保存面板的取消与落盘、再次保存，以及 macOS 文件打开事件进入已运行的独立编辑窗口。Finder 冷启动仍需单独验收。
 
@@ -55,6 +58,8 @@ npm run verify:package
 
 ```sh
 npm run test:desktop
+# 独立运行的真实长 Diff 滚动回归：
+npm run test:diff-scroll-native
 ```
 
 该命令自动构建带自动化能力的测试包，放在 `dist-desktop-test/Galley Test.app`。测试使用独立数据目录与内存页面会话，结束时关闭自己的进程和服务。它不会覆盖 `dist-desktop/Galley.app`，测试后不必补做发布构建。

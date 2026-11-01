@@ -432,13 +432,13 @@ html:not(.dark) .diff-surface { --ink: #1a1a1a; --add-bg: var(--diff-add-bg); --
 .diff-surface .diff i { font-style: normal; }
 .diff-surface .diff .hl-d { background: color-mix(in srgb, var(--del-bg), var(--red) 20%); }
 .diff-surface .diff .hl-i { background: color-mix(in srgb, var(--add-bg), var(--green) 20%); }
+/* Per-token opacity stalls long WKWebView diffs; keep ordinary opaque text. */
 .diff-surface .tk-k { color: var(--syntax-red); }
 .diff-surface .tk-t { color: var(--syntax-orange); }
 .diff-surface .tk-f { color: var(--syntax-blue); }
 .diff-surface .tk-n { color: var(--syntax-orange); }
 .diff-surface .tk-s { color: var(--syntax-green); }
 .diff-surface .tk-c { color: var(--subtle); }
-.diff-surface .tk-k, .diff-surface .tk-t, .diff-surface .tk-f, .diff-surface .tk-n, .diff-surface .tk-s { opacity: .92; }
 .diff-surface .scroll { overflow: auto; }
 .diff-surface .diffs:not(.nowrap) .content { white-space: pre-wrap; }
 .diff-surface .diffs.nowrap .content { white-space: pre; }
