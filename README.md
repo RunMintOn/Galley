@@ -2,6 +2,8 @@
 
 一个窗口审查多个本地项目：项目 / 文件树 / 本轮改动或 Git 历史 / 回复。
 
+![Galley 审查台：左侧项目与会话，文件树，Markdown 源码编辑与右侧回复](docs/images/galley-review-console.png)
+
 ## macOS 桌面应用
 
 本轮提供 mygo 系统 WKWebView 外壳：四栏审查台与独立 Markdown 编辑窗口，共用现有本地服务。应用不内置 Node，运行需要本机已有 Node ≥22.19.0（可复用 pi 自带运行时），不需要 Go；业务后端仍为现有 JavaScript，不是 Go 重写。
