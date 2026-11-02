@@ -130,3 +130,7 @@ npm run verify:migration -- /path/to/22-pi-compact-tool
 ## 来源
 
 快照、补丁路径解析和 diff 核心迁自 compact-tool；回复渲染、函数图、会话读取、活输入及页面交接迁自 visual-reply。依赖许可随构建保存在 `dist/THIRD-PARTY-NOTICES.txt`。
+
+## 许可证
+
+[MIT](LICENSE)。第三方依赖各自的许可随构建保存在 `dist/THIRD-PARTY-NOTICES.txt`。
